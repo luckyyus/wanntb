@@ -8,8 +8,14 @@ if __name__ == "__main__":
     print(tbfile)
     system = wann_tb.TBSystem(tb_file=tbfile)
     onsite = system.get_onsite_energy()
-    print(onsite[0:5])
-    print(onsite[62:67])
-    print(onsite[5:10])
-    print(onsite[67:72])
+    data = np.zeros((5,8), dtype=float)
+    data[:, 0] = onsite[0:5]
+    data[:, 1] = onsite[62:67]
+    data[:, 2] = (data[:, 0] + data[:, 1]) / 2
+    data[:, 3] = (-data[:, 0] + data[:, 1]) / 2
+    data[:, 4] = onsite[5:10]
+    data[:, 5] = onsite[67:72]
+    data[:, 6] = (data[:, 4] + data[:, 5]) / 2
+    data[:, 7] = (-data[:, 4] + data[:, 5]) / 2
+    np.savetxt('sco327-orbital-energy.txt', data, fmt='%8.3f')
 
