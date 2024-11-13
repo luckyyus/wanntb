@@ -33,7 +33,7 @@ class TBSystem:
 
     def get_spin_splitting(self):
         onsite = self.get_onsite_energy()
-        return - onsite[0:self.num_wann//2] + onsite[self.num_wann//2:self.num_wann]
+        return (- onsite[0:self.num_wann//2] + onsite[self.num_wann//2:self.num_wann]) / 2
 
     def get_alpha_beta(self, kmesh, ef, eta=1e-3, q=1e-4, direction=1):
 
