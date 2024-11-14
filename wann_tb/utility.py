@@ -1,5 +1,5 @@
 import numpy as np
-from math import pi, exp
+from math import pi, exp, sin, cos
 import yaml
 import pkgutil
 from numba import njit, prange, complex128, cuda
@@ -174,7 +174,7 @@ def read_tb_file(tb_file='wannier90_tb.dat'):
         real_lattice = np.array([f.readline().split()[:3] for i in range(3)], dtype=float)
         print('real lattice:')
         print(real_lattice)
-        recip_lattice = np.linalg.inv(real_lattice) * TwoPi
+        recip_lattice = np.linalg.inv(real_lattice).T * TwoPi
         print('reciprocal lattice:')
         print(recip_lattice)
         num_wann = int(f.readline())
@@ -198,6 +198,7 @@ def read_tb_file(tb_file='wannier90_tb.dat'):
         R_vec = np.array(irpt, dtype=float)  # 为了和k.R正常一些
         print('shape of ham_R is %s' % list(ham_R.shape))
         print('shape of R_vec is %s' % list(R_vec.shape))
+        print('shape of n_degen is %s' % list(n_degen.shape))
 
         r_mat_R = np.zeros((n_Rpts, 3, num_wann, num_wann), dtype=complex)
         for ir in range(n_Rpts):
@@ -238,7 +239,7 @@ def fourier_phase_R_to_k(R_vec, n_degen, n_Rpts, kpt):
     # 使用 prange 来替代 for 循环，以启用 Numba 的并行执行
     for ir in prange(n_Rpts):
         rdotk = np.dot(R_vec[ir], kpt)  # 计算点积
-        phase_fac[ir] = (np.cos(rdotk) + 1j * np.sin(rdotk)) / n_degen[ir]
+        phase_fac[ir] = (cos(rdotk) + 1j * sin(rdotk)) / n_degen[ir]
     return phase_fac
 
 
@@ -251,7 +252,7 @@ def fourier_R_to_k(mat_R, R_vec, phase_fac, real_lattice, iout='0123'):
     @param real_lattice: 实空间格子
     @param iout: 输出选项字符串，0代表mat_k, 1~3代表xyz三个方向的dmat/dk
     """
-    cart_vec = np.einsum('ij,jk', R_vec, real_lattice)  # frac to cart
+    cart_vec = R_vec @ real_lattice  # frac to cart
     mat_k = np.einsum('ijk, i', mat_R, phase_fac)
     output = {0: mat_k}
     if '1' in iout:
@@ -328,7 +329,7 @@ def guess(x):
 
 
 @njit(parallel=True)
-def W_mn_qp(eig, eig_qp, num_wann, ef, eta):
+def W_mn_q(eig, eig_qp, num_wann, ef, eta):
     """
     W 矩阵，单位 eV^-2
     @param eig:
@@ -346,7 +347,7 @@ def W_mn_qp(eig, eig_qp, num_wann, ef, eta):
 
 
 @njit(parallel=True)
-def get_alpha_beta_k(uu, eig, eig_qp, eig_da, eig_qp_da, sp2_qp, num_wann, ef, eta):
+def get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, sp2_q, num_wann, ef, eta):
     # half = num_wann // 2
     sum_qvd_k = 0.0
     sum_qv_k = 0.0
@@ -354,14 +355,14 @@ def get_alpha_beta_k(uu, eig, eig_qp, eig_da, eig_qp_da, sp2_qp, num_wann, ef, e
     for n_ in prange(num_wann):
         An = A_n(eig[n_], ef, eta)
         for m_ in prange(num_wann):
-            Am = A_n(eig_qp[m_], ef, eta)
+            Am = A_n(eig_q[m_], ef, eta)
             ww = An * Am
             # in units 1
-            sum_alpha_k += sp2_qp[n_, m_] * ww
+            sum_alpha_k += sp2_q[n_, m_] * ww
             # qvd in units eV angst.
-            sum_qvd_k += sp2_qp[n_, m_] * ww * (eig_qp_da[m_] - eig_da[n_])
+            sum_qvd_k += sp2_q[n_, m_] * ww * (eig_q_da[m_] - eig_da[n_])
             # qvs in units eV angst.
-            sum_qv_k += sp2_qp[n_, m_] * (eig_qp_da[m_] * Am - eig_da[n_] * An) / (eig_qp[m_] - eig[n_])
+            sum_qv_k += sp2_q[n_, m_] * (eig_q_da[m_] * Am - eig_da[n_] * An) / (eig_q[m_] - eig[n_])
 
 
     return sum_alpha_k, sum_qvd_k, sum_qv_k
@@ -373,6 +374,19 @@ def cuda_alpha_beta_k(eig, eig_qp, eig_da, eig_qp_da, uu, uu_qp, e_s, num_wann, 
     if i < num_wann * num_wann:
         m_ = i % num_wann
         n_ = i // num_wann
+
+
+@njit
+def get_carrier_k(eig, eig_d, eig_dd, ef, eta):
+    An = A_n(eig, ef, eta)
+    nc = np.zeros((3,3), dtype=float)
+    for i in prange(3):
+        for j in prange(3):
+            # print(eig_d[j] * eig_d[i] / eig_dd[i, j] * An)
+            nc[i, j] = np.sum(An * eig_d[j] * eig_d[i] / (eig_dd[i, j] - 1j * eta)).real
+            # print(nc[i,j])
+    return nc
+
 
 
 def get_kpts_mesh(kmesh):
