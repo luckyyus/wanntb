@@ -1,0 +1,35 @@
+s:
+  - s
+px:
+  - px
+py:
+  - py
+pz:
+  - pz
+p:
+  - pz
+  - px
+  - py
+dz2:
+  - dz2
+dxz:
+  - dxz
+dyz:
+  - dyz
+dx2-y2:
+  - dx2-y2
+dxy:
+  - dxy
+d:
+  - dz2
+  - dxz
+  - dyz
+  - dx2-y2
+  - dxy
+t2g:
+  - dxz
+  - dyz
+  - dxy
+eg:
+  - dz2
+  - dx2-y2

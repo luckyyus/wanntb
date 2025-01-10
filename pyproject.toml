@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "wanntb"
+version = "2025.1.10"
+authors = [{name = 'Jie-Xiang Yu', email = 'kaelthas.yu@gmail.com'}, {name = 'Hong-Fei Huang'}]
+description = 'Toolkits based on WF based tight-binding Hamiltonian'
+readme = 'README.md'
+dependencies = ['numpy>1.16', 'numba>0.50', 'pandas']
+requires-python = ">= 3.10"
+license = {text = "MIT License"}
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+'*' = ['*.yml']
