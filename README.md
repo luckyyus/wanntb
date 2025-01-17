@@ -1,7 +1,16 @@
+# wanntb
+
 Toolkits based on WF based tight-binding Hamiltonian
 
-Achieved:
+## Achieved
 
-Gilbert damping parameter $\alpha$,
+- Eigenvalues and eigenvectors for a single k-point,
 
-non-adiabatic STT parameter $\beta$
+- Gilbert damping parameter $\alpha$,
+
+- non-adiabatic STT parameter $\beta$
+
+## To do list
+
+- Carrier density
+- CUDA GPU  
