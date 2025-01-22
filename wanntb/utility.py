@@ -442,6 +442,22 @@ def get_kpts_mesh(kmesh):
     return np.column_stack((k1.ravel(), k2.ravel(), k3.ravel()))
 
 
+def get_kpts_mesh_around(kmesh, center, distance_cart, recip_lattice):
+    k1, k2, k3 = np.meshgrid(np.arange(kmesh[0], dtype=float) / kmesh[0],
+                             np.arange(kmesh[1], dtype=float) / kmesh[1],
+                             np.arange(kmesh[2], dtype=float) / kmesh[2], indexing='ij')
+    kpts0 = np.column_stack((k1.ravel(), k2.ravel(), k3.ravel()))
+    nk = kpts0.shape[0]
+    kpts = []
+    for ik in range(nk):
+        kpt = kpts0[ik] - np.array([0.5, 0.5, 0.5]) + center
+        dk_cart = (kpt - center) @ recip_lattice
+        r_cart = dk_cart / distance_cart
+        if r_cart.dot(r_cart) < 1:
+            kpts.append(kpt)
+    return np.array(kpts)
+
+
 def get_kpts_path(kpath, nkpts_path, recip_lattice):
     npath = len(kpath) - 1
     kbegin = 0.0

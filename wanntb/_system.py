@@ -43,6 +43,28 @@ class TBSystem:
                                   iout='0')[0]
         return np.linalg.eigh(ham_k)
 
+    def get_eig_kpath(self, kpath, nkpts_path=100):
+        kpts, kpts_len = ut.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
+        nkpts = kpts.shape[0]
+        print('total number of k-points: %d' % nkpts)
+
+    def get_eig_for_kpts_around(self, kmesh, center, distance_cart):
+        kpts = ut.get_kpts_mesh_around(kmesh, center, distance_cart, self.recip_lattice)
+        nk = kpts.shape[0]
+        print('total number of kpoints for fitting: %d ' % nk)
+        eigs = np.zeros((nk, self.num_wann), dtype=float)
+        for ik in range(nk):
+            kpt = kpts[ik]
+            fac = ut.fourier_phase_R_to_k(self.R_vec, self.n_degen, self.n_Rpts, kpt)
+            ham_k = ut.fourier_R_to_k(self.ham_R,
+                                      self.R_vec,
+                                      fac,
+                                      self.real_lattice,
+                                      iout='0')[0]
+            eig, uu = np.linalg.eigh(ham_k)
+            eigs[ik, :] = eig
+        return eigs, kpts, kpts @ self.recip_lattice
+
     def get_alpha_beta(self, kmesh, ef, mag, eta=1e-3, q=1e-5, direction=1):
 
         print('relaxation time %e s' % (ut.Hbar_ / eta))
