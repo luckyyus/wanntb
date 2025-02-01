@@ -231,10 +231,6 @@ def fourier_phase_R_to_k(R_vec, n_degen, n_Rpts, kpt):
     """
     计算从R表象到k表象的相因子
     """
-    # rdotk = np.einsum('ij,j', R_vec, kpt)
-    # phase_fac = (np.cos(rdotk) + 1j * np.sin(rdotk)) / n_degen
-    # mat_k = np.einsum('ijk, i', mat_R, fac)
-    # # eig_n, uu = np.linalg.eigh(mat_k)
     phase_fac = np.zeros(n_Rpts, dtype=complex128)
     # 使用 prange 来替代 for 循环，以启用 Numba 的并行执行
     for ir in prange(n_Rpts):
@@ -243,27 +239,29 @@ def fourier_phase_R_to_k(R_vec, n_degen, n_Rpts, kpt):
     return phase_fac
 
 
-def fourier_R_to_k(mat_R, R_vec, phase_fac, real_lattice, iout='0123'):
+@njit(parallel=True)
+def fourier_R_to_k(mat_R, R_vec, phase_fac, real_lattice, iout=(0)):
     """
 
     @param mat_R: R空间的厄米矩阵
     @param R_vec: 各个R的坐标
     @param phase_fac: 各个R的相因子
     @param real_lattice: 实空间格子
-    @param iout: 输出选项字符串，0代表mat_k, 1~3代表xyz三个方向的dmat/dk
+    @param iout: 输出选项tuple，0代表mat_k, 1~3代表xyz三个方向的dmat/dk
     """
     cart_vec = R_vec @ real_lattice  # frac to cart
-    mat_k = np.einsum('ijk, i', mat_R, phase_fac)
-    output = {0: mat_k}
-    if '1' in iout:
-        mat_k_dx = np.einsum('ijk, i, i', mat_R, cart_vec[:, 0], phase_fac) * 1j
-        output[1] = mat_k_dx
-    if '2' in iout:
-        mat_k_dy = np.einsum('ijk, i, i', mat_R, cart_vec[:, 1], phase_fac) * 1j
-        output[2] = mat_k_dy
-    if '3' in iout:
-        mat_k_dz = np.einsum('ijk, i, i', mat_R, cart_vec[:, 2], phase_fac) * 1j
-        output[3] = mat_k_dz
+    n_rpt, num_wann, _ = mat_R.shape
+    output = np.zeros((4, num_wann, num_wann), dtype=complex128)
+    for i in prange(num_wann):
+        for j in prange(num_wann):
+            mat_Rij = np.ascontiguousarray(mat_R[:, i, j])
+            output[0, i, j] = np.dot(mat_Rij, phase_fac)
+            if 1 in iout:
+                output[1, i, j] = np.dot(mat_Rij * cart_vec[:, 0] * 1j, phase_fac)
+            if 2 in iout:
+                output[2, i, j] = np.dot(mat_Rij * cart_vec[:, 1] * 1j, phase_fac)
+            if 3 in iout:
+                output[3, i, j] = np.dot(mat_Rij * cart_vec[:, 2] * 1j, phase_fac)
     return output
 
 
@@ -290,6 +288,16 @@ def get_eig_da(eig, ham_da, uu, num_wann):
             eig_da[i] = ham_bar_da[i, i].real
         i += 1
     return eig_da
+
+
+@njit
+def ham_eig_da_uu(ham_R, R_vec, n_degen, n_Rpts, num_wann, real_lattice, direction, kpt):
+    fac = fourier_phase_R_to_k(R_vec, n_degen, n_Rpts, kpt)
+    out = fourier_R_to_k(ham_R, R_vec, fac, real_lattice, iout=(0, direction))
+    ham_k, ham_k_da = out[0], out[direction]
+    eig, uu = np.linalg.eigh(ham_k)
+    eig_da = get_eig_da(eig, ham_k_da, uu, num_wann)
+    return ham_k, eig, eig_da, uu
 
 
 def get_spin_splitting(ham, num_wann):
@@ -327,91 +335,105 @@ def Sp2_mn(e_s, um, un, num_wann):
             sp2[n_, m_] = abs(np.dot(um_up, un_dn * e_s))**2
     return sp2
 
+@njit(parallel=True)
+def sz_n(uu, num_wann: int):
+    """
+    计算 < un | Sz | un > 无量纲
+    @param uu:
+    @param num_wann:
+    @return:
+    """
+    half = num_wann // 2
+    sz = np.zeros(num_wann, dtype=float)
+    for n_ in prange(num_wann):
+        up = np.dot(uu[0:half, n_].conj(), uu[0:half, n_]).real
+        dn = np.dot(uu[half:num_wann, n_].conj(), uu[half:num_wann, n_]).real
+        sz[n_] = up - dn
+    return sz
 
 @njit
 def guess(x):
     return 1.0 / (2.0 + exp(-x) + exp(+x))
 
 
-# @njit(parallel=True)
-# def W_mn_q(eig, eig_qp, num_wann, ef, eta):
-#     """
-#     W 矩阵，单位 eV^-2
-#     @param eig:
-#     @param eig_qp:
-#     @param num_wann:
-#     @param ef:
-#     @param eta:
-#     @return:
-#     """
-#     ww = np.zeros((num_wann, num_wann), dtype=float)
-#     for n_ in prange(num_wann):
-#         for m_ in prange(num_wann):
-#             ww[n_, m_] = A_n(eig[n_], ef, eta) * A_n(eig_qp[m_], ef, eta)  # * guess((ef - eig[n_])/eta) / eta
-#     return ww
-
-
 @njit(parallel=True)
-def get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, sp2_q, num_wann, ef, eta):
-    # half = num_wann // 2
+def get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q, num_wann: int, ef: float, eta: float, q: float):
+    half = num_wann // 2
     sum_qvd_k = 0.0
     sum_qv_k = 0.0
     sum_alpha_k = 0.0
     for n_ in prange(num_wann):
+        un_up = np.ascontiguousarray(uu[0:half, n_])
+        un_dn = np.ascontiguousarray(uu[half:num_wann, n_])
+        sz = np.dot(un_up.conj(), un_up).real - np.dot(un_dn.conj(), un_dn).real
         An = A_n(eig[n_], ef, eta)
         for m_ in prange(num_wann):
+            um_up = np.ascontiguousarray(uu_q[0:half, m_])
+            sp2_q = abs(np.dot(um_up.conj(), un_dn * e_s))**2
+            Am = A_n(eig_q[m_], ef, eta)
+            # ww in units eV^-2
+            ww = An * Am
+            # alpha_k in units 1
+            sum_alpha_k += sp2_q * ww
+            # qvd in units eV angst.
+            sum_qvd_k += sp2_q * ww * (eig_q_da[m_] - eig_da[n_])
+            # qvs in units eV angst.
+            if n_ != m_:
+                sum_qv_k += sp2_q * ((eig_q_da[m_] * Am - eig_da[n_] * An)
+                                         / (eig_q[m_] - eig[n_]))
+            else:
+                sum_qv_k += eta * q * ww * eig_da[n_] * eig_da[n_] * sz
+
+    return sum_alpha_k, sum_qvd_k, - sum_qv_k
+
+
+@njit(parallel=True)
+def get_alpha_beta_inter_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q, num_wann: int, ef: float, eta: float):
+    half = num_wann // 2
+    sum_qvd_k = 0.0
+    sum_qv_k = 0.0
+    sum_alpha_k = 0.0
+    for n_ in prange(num_wann):
+        un_dn = np.ascontiguousarray(uu[half:num_wann, n_])
+        An = A_n(eig[n_], ef, eta)
+        for m_ in prange(num_wann):
+            if n_ == m_:
+                continue
+            um_up = np.ascontiguousarray(uu_q[0:half, m_])
+            sp2_q = abs(np.dot(um_up.conj(), un_dn * e_s)) ** 2
             Am = A_n(eig_q[m_], ef, eta)
             ww = An * Am
             # in units 1
-            sum_alpha_k += sp2_q[n_, m_] * ww
+            sum_alpha_k += sp2_q * ww
             # qvd in units eV angst.
-            sum_qvd_k += sp2_q[n_, m_] * ww * (eig_q_da[m_] - eig_da[n_])
+            sum_qvd_k += sp2_q * ww * (eig_q_da[m_] - eig_da[n_])
             # qvs in units eV angst.
-            if n_ != m_:
-                sum_qv_k += sp2_q[n_, m_] * ((eig_q_da[m_] * Am - eig_da[n_] * An)
+            sum_qv_k += sp2_q * ((eig_q_da[m_] * Am - eig_da[n_] * An)
                                          / (eig_q[m_] - eig[n_]))
 
     return sum_alpha_k, sum_qvd_k, - sum_qv_k
 
 
 @njit(parallel=True)
-def get_alpha_beta_inter_k(eig, eig_q, eig_da, eig_q_da, sp2_q, num_wann, ef, eta):
+def get_alpha_beta_intra_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, num_wann: int, ef: float, eta: float, q: float):
+    half = num_wann // 2
     sum_qvd_k = 0.0
     sum_qv_k = 0.0
     sum_alpha_k = 0.0
     for n_ in prange(num_wann):
-        An = A_n(eig[n_], ef, eta)
-        for m_ in prange(num_wann):
-            if n_ == m_:
-                continue
-            Am = A_n(eig_q[m_], ef, eta)
-            ww = An * Am
-            # in units 1
-            sum_alpha_k += sp2_q[n_, m_] * ww
-            # qvd in units eV angst.
-            sum_qvd_k += sp2_q[n_, m_] * ww * (eig_q_da[m_] - eig_da[n_])
-            # qvs in units eV angst.
-            sum_qv_k += sp2_q[n_, m_] * ((eig_q_da[m_] * Am - eig_da[n_] * An)
-                                         / (eig_q[m_] - eig[n_] - 1j*Eta)).real
-
-    return sum_alpha_k, sum_qvd_k, - sum_qv_k
-
-
-@njit(parallel=True)
-def get_alpha_beta_intra_k(eig, eig_q, eig_da, eig_q_da, sp2_q, num_wann, ef, eta):
-    sum_qvd_k = 0.0
-    sum_qv_k = 0.0
-    sum_alpha_k = 0.0
-    for n_ in prange(num_wann):
+        un_up = np.ascontiguousarray(uu[0:half, n_])
+        un_dn = np.ascontiguousarray(uu[half:num_wann, n_])
+        sz = np.dot(un_up.conj(), un_up).real - np.dot(un_dn.conj(), un_dn).real
+        sp2_q = abs(np.dot(un_up.conj(), un_dn * e_s)) ** 2
         An = A_n(eig[n_], ef, eta)
         Am = A_n(eig_q[n_], ef, eta)
         ww = An * Am
         # in units 1
-        sum_alpha_k += sp2_q[n_, n_] * ww
+        sum_alpha_k += sp2_q * ww
         # qvd in units eV angst.
-        sum_qvd_k += sp2_q[n_, n_] * ww * (eig_q_da[n_] - eig_da[n_])
+        sum_qvd_k += sp2_q * ww * (eig_q_da[n_] - eig_da[n_])
         # qvs in units eV angst.
-        sum_qv_k += sp2_q[n_, n_] * (eig_q_da[n_] * Am - eig_da[n_] * An) / (eig_q[n_] - eig[n_])
+        sum_qv_k += eta * q * ww * eig_da[n_] * eig_da[n_] * sz[n_]
 
     return sum_alpha_k, sum_qvd_k, sum_qv_k
 
@@ -423,16 +445,36 @@ def cuda_alpha_beta_k(eig, eig_qp, eig_da, eig_qp_da, uu, uu_qp, e_s, num_wann, 
         n_ = i // num_wann
 
 
+def get_berry_curvature_k(eig, uu, r_k, eig_da_):
+    aa_k = r_k + 1j* (eig - eig)
+
 @njit(parallel=True)
 def get_carrier_k(eig, eig_d, eig_dd, num_wann, ef, eta):
     An = A_n(eig, ef, eta)
-    nc_ = np.zeros((3,3, num_wann), dtype=float)
-    for i in prange(3):
-        for j in prange(3):
-            for n_ in prange(num_wann):
-                nc_[i, j, num_wann] = (An[n_] * eig_d[j, n_] * eig_d[i, n_] / (eig_dd[i, j, n_] - 1j * eta)).real
-            # nc[i, j] = np.sum(An * eig_d[j] * eig_d[i] / (eig_dd[i, j] - 1j * eta)).real
+    nc_ = np.zeros(num_wann, dtype=float)
+    for n_ in prange(num_wann):
+        nc_[num_wann] = (An[n_] * eig_d[n_] * eig_d[n_] / (eig_dd[n_] - 1j * eta)).real
     return np.sum(nc_, axis=2)
+
+
+@njit(parallel=True)
+def get_carrier_kpar(ham_R, R_vec, n_degen, n_Rpts, num_wann, real_lattice, direction, kpts, nkpts, q_frac, q, ef, eta):
+    list_o_k = np.zeros(nkpts, dtype=float)
+    for ik in prange(nkpts):
+        kpt = kpts[ik]
+        ham_k, eig, eig_da, uu = ham_eig_da_uu(ham_R, R_vec, n_degen,
+                                               n_Rpts, num_wann, real_lattice,
+                                               direction, kpt)
+
+        # k + q
+        ham_q, eig_q, eig_q_da, uu_q = ham_eig_da_uu(ham_R, R_vec, n_degen,
+                                                     n_Rpts, num_wann, real_lattice,
+                                                     direction, kpt + q_frac)
+        eig_dd = (eig_q_da - eig_da) / q
+        An = A_n(eig, ef, eta)
+        list_o_k[ik] = np.dot(An, (eig_da * eig_da / (eig_dd - 1j * eta)).real)
+    return np.sum(list_o_k)
+
 
 
 def get_kpts_mesh(kmesh):
