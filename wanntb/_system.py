@@ -1,7 +1,17 @@
 import numpy as np
+# from numba import int32, float64, complex128
 from datetime import datetime
 from . import utility as ut
 
+# spec = [
+#     ('seedname', numba.core.string),
+#     ('num_wann', int32),
+#     ('real_lattice',float64[:]),
+#     ('recip_lattice', float64[:]),
+#     ('n_Rpts', int32),
+#     ('ham_R', complex128[:,:,:]),
+#
+# ]
 
 class TBSystem:
 
@@ -50,6 +60,7 @@ class TBSystem:
         print('total number of k-points: %d' % nkpts)
 
     def get_eig_for_kpts_around(self, kmesh, center, distance_cart):
+        start = datetime.now()
         kpts = ut.get_kpts_mesh_around(kmesh, center, distance_cart, self.recip_lattice)
         nk = kpts.shape[0]
         print('total number of kpoints for fitting: %d ' % nk)
@@ -60,10 +71,10 @@ class TBSystem:
             ham_k = ut.fourier_R_to_k(self.ham_R,
                                       self.R_vec,
                                       fac,
-                                      self.real_lattice,
-                                      iout='0')[0]
+                                      self.real_lattice)[0]
             eig, uu = np.linalg.eigh(ham_k)
             eigs[ik, :] = eig
+        print('time used: %24.2f <-- get_eig_for_kpts_around' % (datetime.now() - start).total_seconds())
         return eigs, kpts, kpts @ self.recip_lattice
 
     def get_alpha_beta(self, kmesh, ef, mag, eta=1e-3, q=1e-5, direction=1):
@@ -93,7 +104,7 @@ class TBSystem:
         print(sum_o)
         alpha = sum_o[0] / (ut.TwoPi * 4 * mag)
         beta = sum_o[1] / sum_o[2] / 2
-        print('time used: %24.6f <-- get_alpha_beta' % (datetime.now() - start).total_seconds())
+        print('time used: %24.2f <-- get_alpha_beta' % (datetime.now() - start).total_seconds())
         return alpha, beta
 
     def get_alpha_beta_kpath(self, kpath, ef, mag, eta=1e-3, q=1e-5, direction=1, nkpts_path=100):
@@ -108,24 +119,13 @@ class TBSystem:
         list_o_k[:, 0] = kpts_len
         for ik in range(nkpts):
             kpt = kpts[ik]
-            ham_k, eig, eig_da, uu = ut.ham_eig_da_uu(self.ham_R,
-                                                      self.R_vec,
-                                                      self.n_degen,
-                                                      self.n_Rpts,
-                                                      self.num_wann,
-                                                      self.real_lattice,
-                                                      direction,
-                                                      kpt)
-
+            ham_k, eig, eig_da, uu = ut.ham_eig_da_uu(self.ham_R, self.R_vec, self.n_degen,
+                                                      self.n_Rpts, self.num_wann, self.real_lattice,
+                                                      direction, kpt)
             # k + q
-            ham_q, eig_q, eig_q_da, uu_q = ut.ham_eig_da_uu(self.ham_R,
-                                                            self.R_vec,
-                                                            self.n_degen,
-                                                            self.n_Rpts,
-                                                            self.num_wann,
-                                                            self.real_lattice,
-                                                            direction,
-                                                            kpt + q_frac)
+            ham_q, eig_q, eig_q_da, uu_q = ut.ham_eig_da_uu(self.ham_R, self.R_vec, self.n_degen,
+                                                            self.n_Rpts, self.num_wann, self.real_lattice,
+                                                            direction, kpt + q_frac)
             energy_spin = ut.get_spin_splitting(ham_k, self.num_wann)
 
             list_o_k[ik, 1:4] = ut.get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, energy_spin, uu, uu_q,
@@ -137,11 +137,33 @@ class TBSystem:
     def get_carrier(self, kmesh, ef, eta=1e-3, q=1e-5, direction=1):
         start = datetime.now()
         kpts = ut.get_kpts_mesh(kmesh)
-        nkpts = kpts.shape[0]
-        print('total number of k-points: %d' % nkpts)
-        q_frac = q * ut.Cart @ self.recip_lattice / ut.TwoPi
+        print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
+        q_frac = q * ut.Cart[direction-1, :] @ self.recip_lattice / ut.TwoPi
         sum_o = ut.get_carrier_kpar(self.ham_R, self.R_vec, self.n_degen,
                                     self.n_Rpts, self.num_wann, self.real_lattice,
-                                    direction, kpts, nkpts, q_frac, q, ef, eta)
-        print('time used: %24.6f <-- get_carrier' % (datetime.now() - start).total_seconds())
-        return sum_o / (nkpts * ut.TwoPi)
+                                    direction, kpts, q_frac, q, ef, eta)
+        print('time used: %24.2f <-- get_carrier' % (datetime.now() - start).total_seconds())
+        return sum_o
+
+    def get_berry_curvature_kpath(self, kpath, nkpts_path=100):
+        start = datetime.now()
+        kpts, kpts_len = ut.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
+        nkpts = kpts.shape[0]
+        print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
+
+        print('time used: %24.2f <-- get_berry_curvature_kpath' % (datetime.now() - start).total_seconds())
+
+    def get_ahc_kmesh_fermi(self, kmesh, ef_min, ef_max, ef_step, eta=1e-3):
+        start = datetime.now()
+        kpts = ut.get_kpts_mesh(kmesh)
+        print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
+        efs = np.linspace(ef_min, ef_max, ef_step, dtype=float)
+        print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
+        ahc_efs = ut.get_ahc_kpar_fermi(self.ham_R,self.r_mat_R,self.R_vec,self.n_degen,
+                                        self.n_Rpts,self.num_wann,self.real_lattice,
+                                        kpts, efs, eta)
+        output = np.zeros((efs.shape[0], 4), dtype=float)
+        output[:, 0] = efs
+        output[:, 1:] = ahc_efs
+        print('time used: %24.2f <-- get_ahc_kmesh_fermi' % (datetime.now() - start).total_seconds())
+        return output
