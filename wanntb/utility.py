@@ -256,6 +256,7 @@ def fourier_R_to_k(mat_R, R_vec, phase_fac, real_lattice, iout=(0)):
     """
     cart_vec = R_vec @ real_lattice  # frac to cart
     n_rpt, num_wann, _ = mat_R.shape
+    # 0 for mat_k, 1 to 3 for \partial mat_k/\partial k_i (i=x,y,z)
     output = np.zeros((4, num_wann, num_wann), dtype=complex128)
     for i in prange(num_wann):
         for j in prange(num_wann):
@@ -268,6 +269,7 @@ def fourier_R_to_k(mat_R, R_vec, phase_fac, real_lattice, iout=(0)):
             if 3 in iout:
                 output[3, i, j] = np.dot(mat_Rij * cart_vec[:, 2] * 1j, phase_fac)
     return output
+
 
 @njit(parallel=True)
 def fourier_R_to_k_vec3(vec_mat_R, phase_fac):
@@ -330,9 +332,6 @@ def ham_eig_da_uu(ham_R, R_vec, n_degen, n_Rpts, num_wann, real_lattice, directi
 def get_spin_splitting(ham, num_wann):
     onsite = np.diagonal(ham).real
     return (- onsite[0:num_wann//2] + onsite[num_wann//2:num_wann]) / 2
-
-
-
 
 
 @njit('float64(float64, float64, float64)')
