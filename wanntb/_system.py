@@ -42,6 +42,20 @@ class TBSystem:
         print('unit cell volume: %.4f angst.^3' % self.volume)
         # np.savetxt('R_vec_cart.txt', self.R_vec_cart_T.T, fmt='%10.6f')
 
+# the four functions below is usually for double check
+
+    def r_cart_to_frac(self, r_cart):
+        return r_cart @ self.recip_lattice / ut.TwoPi
+
+    def k_cart_to_frac(self, k_cart):
+        return k_cart @ self.real_lattice / ut.TwoPi
+
+    def r_frac_to_cart(self, r_frac):
+        return r_frac @ self.real_lattice
+
+    def k_frac_to_cart(self, k_frac):
+        return k_frac @ self.recip_lattice
+
     def get_onsite_energy(self):
         return np.diagonal(self.ham_R[self.iR0, :, :]).real
 
@@ -53,7 +67,7 @@ class TBSystem:
         fac = ut.fourier_phase_R_to_k(self.R_vec, self.n_degen, self.n_Rpts, kpt)
         ham_k = ut.fourier_R_to_k(self.ham_R, self.R_vec_cart_T, fac, iout=[0])[0]
         eig, uu = np.linalg.eigh(ham_k)
-        return ham_k, eig, uu
+        return eig, uu
 
     def get_ham_eig_da_uu_for_one_kpt(self, kpt, direction=1):
         fac = ut.fourier_phase_R_to_k(self.R_vec, self.n_degen, self.n_Rpts, kpt)
@@ -63,7 +77,7 @@ class TBSystem:
         eig_da = ut.get_eig_da(eig, ham_k_da, uu, self.num_wann)
         return eig, eig_da, np.diagonal(ut.unitary_trans(ham_k_da, uu)).real
 
-    def plot_bands_kpath(self, kpath, nkpts_path=100, filename='bands-debug.txt'):
+    def output_bands_kpath(self, kpath, nkpts_path=100, filename='bands-debug.txt'):
         start = datetime.now()
         kpts, kpts_len = ut.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
         nkpts = kpts.shape[0]
@@ -83,7 +97,6 @@ class TBSystem:
         print('time used: %24.2f <-- plot_bands_kpath' % (datetime.now() - start).total_seconds())
 
 
-
     def get_eig_for_kpts_around(self, kmesh, center, distance_cart):
         start = datetime.now()
         kpts = ut.get_kpts_mesh_around(kmesh, center, distance_cart, self.recip_lattice)
@@ -99,17 +112,19 @@ class TBSystem:
         print('time used: %24.2f <-- get_eig_for_kpts_around' % (datetime.now() - start).total_seconds())
         return eigs, kpts, kpts @ self.recip_lattice
 
-    def get_alpha_beta(self, kmesh, ef, mag, eta=1e-3, q=1e-6, direction=1):
+    def get_alpha_beta(self, kmesh, ef, mag, eta=1e-3, q=1e-6, direction=1, adpt_mesh=4):
         start = datetime.now()
         print('relaxation time %e s' % (ut.Hbar_ / eta))
         kpts = ut.get_kpts_mesh(kmesh)
         nkpts = kpts.shape[0]
         print('total number of k-points: %d' % nkpts)
         # get the q vector in fraction coordinate
-        q_frac = q * np.dot(ut.Cart[direction-1, :], self.recip_lattice) / ut.TwoPi
+        q_frac = q * ut.Cart[direction-1, :] @ self.real_lattice / ut.TwoPi
         print('q in fraction units: %s' % q_frac)
         e_s = self.get_spin_splitting()
-        list_o_k = np.zeros((nkpts, 3), dtype=float)
+        # adaptive k-mesh
+        adpt_dk = 1.0 / adpt_mesh / np.array(kmesh)
+        print('adpt_dk in fraction units: %s' % adpt_dk)
         # [alpha, beta_alpha*q*vd, beta_q*vs]
         o_sum = ut.get_alpha_beta_kpar(self.ham_R, self.R_vec, self.R_vec_cart_T, self.n_degen,
                                         self.n_Rpts, self.num_wann,direction, e_s, kpts, q_frac, q, ef, eta)
@@ -121,35 +136,27 @@ class TBSystem:
         return alpha, o_sum[1], o_sum[2], beta, ratio
 
     def get_alpha_beta_kpath(self, kpath, ef, mag, eta=1e-3, q=1e-6, direction=1, nkpts_path=100):
+        start = datetime.now()
         print('relaxation time %e s' % (ut.Hbar_ / eta))
         kpts, kpts_len = ut.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
         nkpts = kpts.shape[0]
         print('total number of k-points: %d' % nkpts)
-        q_frac = q * np.dot(ut.Cart[direction - 1, :], self.recip_lattice) / ut.TwoPi
+        q_frac = q * np.dot(ut.Cart[direction - 1, :], self.real_lattice) / ut.TwoPi
         print('q in fraction units: %s' % q_frac)
         e_s = self.get_spin_splitting()
         # kpts_len, sum_alpha_k, sum_qvd_k, sum_qv_k, sum_alpha_k(inter), sum_qvd_k(inter), sum_qv_k(inter)
         list_o_k = np.zeros((nkpts, 7), dtype=float)
         list_o_k[:, 0] = kpts_len
-        for ik in range(nkpts):
-            kpt = kpts[ik]
-            ham_k, eig, eig_da, uu = ut.ham_eig_da_uu(self.ham_R, self.R_vec, self.R_vec_cart_T, self.n_degen,
-                                                      self.n_Rpts, self.num_wann, kpt, direction)
-            # k + q
-            ham_q, eig_q, eig_q_da, uu_q = ut.ham_eig_da_uu(self.ham_R, self.R_vec, self.R_vec_cart_T, self.n_degen,
-                                                            self.n_Rpts, self.num_wann, kpt + q_frac, direction)
-
-            list_o_k[ik, 1:4] = ut.get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q,
-                                                    self.num_wann, ef, eta, q)
-            list_o_k[ik, 4:7] = ut.get_alpha_beta_inter_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q,
-                                                          self.num_wann, ef, eta)
+        list_o_k[:, 1:] = ut.get_alpha_beta_kpar_kpath(self.ham_R, self.R_vec, self.R_vec_cart_T, self.n_degen,
+                                            self.n_Rpts, self.num_wann,direction, e_s, kpts, q_frac, q, ef, eta)
+        print('time used: %24.2f <-- get_alpha_beta_kpath' % (datetime.now() - start).total_seconds())
         return list_o_k
 
     def get_carrier(self, kmesh, ef, eta=1e-3, q=1e-5, direction=1):
         start = datetime.now()
         kpts = ut.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
-        q_frac = q * ut.Cart[direction-1, :] @ self.recip_lattice / ut.TwoPi
+        q_frac = q * ut.Cart[direction-1, :] @ self.real_lattice / ut.TwoPi
         sum_o = ut.get_carrier_kpar(self.ham_R, self.R_vec, self.R_vec_cart_T, self.n_degen,
                                     self.n_Rpts, self.num_wann, direction, kpts, q_frac, q, ef, eta)
         print('time used: %24.2f <-- get_carrier' % (datetime.now() - start).total_seconds())
