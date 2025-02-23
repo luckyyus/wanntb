@@ -127,14 +127,8 @@ class NEGF:
                                                  self.paras['lead_num_iter'])
         print('self energies is calculated. time: %8.2f' % (time() - start))
         np.savetxt('gm_l_0.txt', gm_l[0, :, :], '%16.8e')
-        trans_s[:, 1] = transmission_k(self.device.num_wann,
-                                       self.device.ham_R,
-                                       self.device.n_Rpts,
-                                       self.device.R_vec,
-                                       self.device.n_degen,
-                                       mu,
-                                       self.li_lc, self.li_rc, sRl, sRr, gm_l, gm_r,
-                                       n_e, e_list, nkpt, kpts)
+        trans_s[:, 1] = transmission_k(self.device.num_wann, self.device.ham_R, self.device.R_vec, self.device.n_degen,
+                                       mu, self.li_lc, self.li_rc, sRl, sRr, gm_l, gm_r, n_e, e_list, nkpt, kpts)
         # for i in range(e_list.shape[0]):
         #     # 左电极 表面格林函数 自能 展宽态密度
         #     gsRl = self.lead_l.surface_GR(e_list[i], mu_l, self.paras['lead_num_iter'])

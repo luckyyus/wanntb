@@ -13,6 +13,7 @@ from . import utility as ut
 #
 # ]
 
+
 class TBSystem:
 
     def __init__(self, tb_file='wannier90_tb.dat'):
@@ -64,13 +65,13 @@ class TBSystem:
         return (- onsite[0:self.num_wann//2] + onsite[self.num_wann//2:self.num_wann]) / 2
 
     def get_eig_uu_for_one_kpt(self, kpt):
-        fac = ut.fourier_phase_R_to_k(self.R_vec, self.n_degen, self.n_Rpts, kpt)
+        fac = ut.fourier_phase_R_to_k(self.R_vec, self.n_degen, kpt)
         ham_k = ut.fourier_R_to_k(self.ham_R, self.R_vec_cart_T, fac, iout=[0])[0]
         eig, uu = np.linalg.eigh(ham_k)
         return eig, uu
 
     def get_ham_eig_da_uu_for_one_kpt(self, kpt, direction=1):
-        fac = ut.fourier_phase_R_to_k(self.R_vec, self.n_degen, self.n_Rpts, kpt)
+        fac = ut.fourier_phase_R_to_k(self.R_vec, self.n_degen, kpt)
         out = ut.fourier_R_to_k(self.ham_R, self.R_vec_cart_T, fac, iout=[0, direction])
         ham_k, ham_k_da = out[0], out[direction]
         eig, uu = np.linalg.eigh(ham_k)
@@ -85,7 +86,7 @@ class TBSystem:
         eigs = np.zeros((nkpts, self.num_wann), dtype=float)
         for ik in range(nkpts):
             kpt = kpts[ik]
-            fac = ut.fourier_phase_R_to_k(self.R_vec, self.n_degen, self.n_Rpts, kpt)
+            fac = ut.fourier_phase_R_to_k(self.R_vec, self.n_degen, kpt)
             ham_k = ut.fourier_R_to_k(self.ham_R, self.R_vec_cart_T, fac, iout=[0])[0]
             eig, uu = np.linalg.eigh(ham_k)
             eigs[ik, :] = eig
@@ -96,7 +97,6 @@ class TBSystem:
                 outf.write('\n')
         print('time used: %24.2f <-- plot_bands_kpath' % (datetime.now() - start).total_seconds())
 
-
     def get_eig_for_kpts_around(self, kmesh, center, distance_cart):
         start = datetime.now()
         kpts = ut.get_kpts_mesh_around(kmesh, center, distance_cart, self.recip_lattice)
@@ -105,7 +105,7 @@ class TBSystem:
         eigs = np.zeros((nk, self.num_wann), dtype=float)
         for ik in range(nk):
             kpt = kpts[ik]
-            fac = ut.fourier_phase_R_to_k(self.R_vec, self.n_degen, self.n_Rpts, kpt)
+            fac = ut.fourier_phase_R_to_k(self.R_vec, self.n_degen, kpt)
             ham_k = ut.fourier_R_to_k(self.ham_R, self.R_vec_cart_T, fac)[0]
             eig, uu = np.linalg.eigh(ham_k)
             eigs[ik, :] = eig
@@ -127,7 +127,7 @@ class TBSystem:
         print('adpt_dk in fraction units: %s' % adpt_dk)
         # [alpha, beta_alpha*q*vd, beta_q*vs]
         o_sum = ut.get_alpha_beta_kpar(self.ham_R, self.R_vec, self.R_vec_cart_T, self.n_degen,
-                                        self.n_Rpts, self.num_wann,direction, e_s, kpts, q_frac, q, ef, eta)
+                                       self.num_wann, direction, e_s, kpts, q_frac, q, ef, eta)
         print(o_sum)
         alpha = o_sum[0] / (ut.TwoPi * 4 * mag)
         beta = o_sum[1] / o_sum[2] / 2
@@ -148,7 +148,7 @@ class TBSystem:
         list_o_k = np.zeros((nkpts, 7), dtype=float)
         list_o_k[:, 0] = kpts_len
         list_o_k[:, 1:] = ut.get_alpha_beta_kpar_kpath(self.ham_R, self.R_vec, self.R_vec_cart_T, self.n_degen,
-                                            self.n_Rpts, self.num_wann,direction, e_s, kpts, q_frac, q, ef, eta)
+                                                       self.num_wann,direction, e_s, kpts, q_frac, q, ef, eta)
         print('time used: %24.2f <-- get_alpha_beta_kpath' % (datetime.now() - start).total_seconds())
         return list_o_k
 
@@ -158,7 +158,7 @@ class TBSystem:
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         q_frac = q * ut.Cart[direction-1, :] @ self.real_lattice / ut.TwoPi
         sum_o = ut.get_carrier_kpar(self.ham_R, self.R_vec, self.R_vec_cart_T, self.n_degen,
-                                    self.n_Rpts, self.num_wann, direction, kpts, q_frac, q, ef, eta)
+                                    self.num_wann, direction, kpts, q_frac, q, ef, eta)
         print('time used: %24.2f <-- get_carrier' % (datetime.now() - start).total_seconds())
         return sum_o
 
@@ -177,7 +177,7 @@ class TBSystem:
         efs = np.linspace(ef_min, ef_max, n_ef, endpoint=False, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
         ahc_efs = ut.get_ahc_kpar_fermi(self.ham_R,self.r_mat_R,self.R_vec, self.R_vec_cart_T, self.n_degen,
-                                        self.n_Rpts,self.num_wann, kpts, efs, eta)
+                                        self.num_wann, kpts, efs, eta)
         output = np.zeros((efs.shape[0], 4), dtype=float)
         output[:, 0] = efs
         output[:, 1:] = ahc_efs / self.volume

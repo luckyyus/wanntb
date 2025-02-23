@@ -54,8 +54,8 @@ class LayeredSystem(TBSystem):
         kpts[:, 1] = kpty.reshape(nkpt)
         dos = np.zeros((e_list.shape[0], 2), dtype=float)
         dos[:, 0] = e_list
-        dos[:, 1] = get_dos_e(self.num_wann, self.ham_R, self.n_Rpts, self.R_vec, self.n_degen, efermi,
-                              n_e, e_list, nkpt, kpts)
+        dos[:, 1] = get_dos_e(self.num_wann, self.ham_R, self.R_vec, self.n_degen, efermi, n_e, e_list,
+                              nkpt)
         # for i in range(e_list.shape[0]):
         #     dos[i, 1] = get_dos_e(self.num_wann, self.ham_R, self.n_Rpts, self.R_vec, self.n_degen, efermi,
         #                           e_list[i], nkpt, kpts)
