@@ -191,7 +191,7 @@ def read_tb_file(tb_file='wannier90_tb.dat'):
         ndegen = []
         while len(ndegen) < n_Rpts:
             ndegen += f.readline().split()
-        n_degen = np.array(ndegen, dtype=np.float64)
+        n_degen = np.array(ndegen, dtype=int)
         # initialize R_vec and Ham_R
         irpt = []
         ham_R = np.zeros((n_Rpts, num_wann, num_wann), dtype=np.complex128)
@@ -235,7 +235,7 @@ def read_tb_file(tb_file='wannier90_tb.dat'):
             'r_mat_R': r_mat_R}
 
 
-@njit('complex128[:](float64[:,:], float64[:], float64[:])', nogil=True)
+@njit(nogil=True)
 def fourier_phase_R_to_k(R_vec, n_degen, kpt):
     """
     计算从R表象到k表象的相因子, [n_Rpt]
@@ -408,7 +408,7 @@ def _get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q, num_wann: int
     alpha_qvd_k_n = np.zeros(num_wann, dtype=np.float64)
     qvs_k_n = np.zeros(num_wann, dtype=np.float64)
     for n_ in prange(num_wann):
-        if abs(eig[n_] - ef) > eta * 10.0:
+        if abs(eig[n_] - ef) > eta * 12.0:
             continue
         # un_up = np.ascontiguousarray(uu[0:half, n_])
         un_dn = np.ascontiguousarray(uu[half:num_wann, n_])
