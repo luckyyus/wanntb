@@ -1,25 +1,6 @@
 import numpy as np
-import scipy
-from math import pi, exp
-import yaml
-import pkgutil
 from numba import njit, prange
-
-
-TwoPi = 2.0 * pi
-
-H_ = 4.1356676969e-3  # Planck constant h in eV.ps
-Hbar_ = H_ / TwoPi # hbar in eV.ps
-
-Mu_B_ = 5.7883817982e-5  # Bohr magneton mu_B in eV/T, 1T = 1 V.s.m^-2 = 1e-8 V.ps.\AA^-2
-
-Orbitals: dict = yaml.safe_load(pkgutil.get_data(__package__, 'orbitals.yml').decode('utf-8'))
-
-Eta = 1.0E-4
-
-Cart = np.array([[1.0, 0.0, 0.0],
-                 [0.0, 1.0, 0.0],
-                 [0.0, 0.0, 1.0]], dtype=float)
+from .constant import TwoPi, Eta
 
 
 def get_list_index(item, li):
@@ -31,7 +12,7 @@ def get_list_index(item, li):
 
 @njit
 def fermi(e, kbT):
-    return 1.0 / (exp(e/kbT) + 1.0)
+    return 1.0 / (np.exp(e/kbT) + 1.0)
 
 
 @njit
@@ -86,25 +67,25 @@ def _get_submatrix_by_index(target, xlist, ylist):
 
 
 # 不用了，废弃
-@njit
-def transmission_jit(num_wann, ham, li_lc, li_rc,
-                     energy, sigmaRl, sigmaRr, gamma_l, gamma_r):
-    _matrix_add_by_index(ham, li_lc, li_lc, sigmaRl)
-    _matrix_add_by_index(ham, li_rc, li_rc, sigmaRr)
-    # 总的推迟格林函数和超越格林函数
-    gR = np.linalg.inv(np.eye(num_wann, dtype=np.complex128) * energy - ham)
-    gA = gR.T.conjugate()
-    gR_lr = _get_submatrix_by_index(gR, li_lc, li_rc)
-    gA_rl = _get_submatrix_by_index(gA, li_rc, li_lc)
-    # tr(gamma_l.gR_lr.gamma_r.gA_rl)
-    return np.trace(np.dot(np.dot(np.dot(gamma_l, gR_lr), gamma_r), gA_rl)).real
+# @njit
+# def transmission_jit(num_wann, ham, li_lc, li_rc,
+#                      energy, sigmaRl, sigmaRr, gamma_l, gamma_r):
+#     _matrix_add_by_index(ham, li_lc, li_lc, sigmaRl)
+#     _matrix_add_by_index(ham, li_rc, li_rc, sigmaRr)
+#     # 总的推迟格林函数和超越格林函数
+#     gR = np.linalg.inv(np.eye(num_wann, dtype=np.complex128) * energy - ham)
+#     gA = gR.T.conjugate()
+#     gR_lr = _get_submatrix_by_index(gR, li_lc, li_rc)
+#     gA_rl = _get_submatrix_by_index(gA, li_rc, li_lc)
+#     # tr(gamma_l.gR_lr.gamma_r.gA_rl)
+#     return np.trace(np.dot(np.dot(np.dot(gamma_l, gR_lr), gamma_r), gA_rl)).real
 
 
 @njit(nogil=True)
-def _get_ham_k2d(num_wann, ham_R, r_vec, n_degen, k_2d, efermi):
+def _get_ham_k2d(num_wann, ham_R, r_vec, k_2d, efermi):
     # ham_k = np.zeros((num_wann, num_wann), dtype=complex128)
     rdotk = r_vec[:, 0:2] @ k_2d * TwoPi
-    phase_fac = (np.cos(rdotk) + 1j * np.sin(rdotk)) / n_degen
+    phase_fac = np.cos(rdotk) + 1j * np.sin(rdotk)
     ham_k = phase_fac @ ham_R
     # for ir in range(n_rpts):
     #     # 只有Rz为0的H_R是需要考虑的
@@ -115,13 +96,15 @@ def _get_ham_k2d(num_wann, ham_R, r_vec, n_degen, k_2d, efermi):
 
 
 @njit(parallel=True, nogil=True)
-def transmission_k(num_wann, ham_R, R_vec, n_degen, efermi,
-                   li_lc, li_rc, sRl, sRr, gm_l, gm_r, n_e, e_list, nkpt,
-                   kpts):
+def transmission_k2d_kpar(num_wann, ham_R, R_vec, efermi,
+                          li_lc, li_rc, sRl, sRr, gm_l, gm_r, e_list,
+                          kpts):
+    n_e = e_list.shape[0]
+    nkpts = kpts.shape[0]
     # 每个k点的透射系数数组
-    trans_k = np.zeros((n_e, nkpt), dtype=float)
-    for ik in prange(nkpt):
-        ham_k = _get_ham_k2d(num_wann, ham_R, R_vec, n_degen, kpts[ik, :], efermi)
+    trans_k = np.zeros((n_e, nkpts), dtype=np.float64)
+    for ik in prange(nkpts):
+        ham_k = _get_ham_k2d(num_wann, ham_R, R_vec, kpts[ik, :], efermi)
         ham_k2 = np.zeros((num_wann, num_wann), dtype=np.complex128)
         for ie in range(n_e):
             ham_k2[:, :] = ham_k.copy()
@@ -135,25 +118,25 @@ def transmission_k(num_wann, ham_R, R_vec, n_degen, efermi,
             tt = np.dot(np.dot(np.dot(gm_l[ie, :, :], gR_lr), gm_r[ie, :, :]), gA_rl)
             trans_k[ie, ik] = np.trace(tt).real
 
-    return np.sum(trans_k, axis=1) / nkpt
+    return np.sum(trans_k, axis=1) / nkpts
 
 
 @njit(parallel=True, nogil=True)
-def get_dos_e(num_wann, ham_R, R_vec, n_degen, efermi, n_e, e_list, nkpt, kpts):
-    dos_k = np.zeros((n_e, nkpt), dtype=float)
-    for ik in prange(nkpt):
-        ham_k = _get_ham_k2d(num_wann, ham_R, R_vec, n_degen, kpts[ik, :], efermi)
+def get_dos_e_kpar(num_wann, ham_R, R_vec, ef, n_e, e_list, nkpts, kpts):
+    dos_k = np.zeros((n_e, nkpts), dtype=float)
+    for ik in prange(nkpts):
+        ham_k = _get_ham_k2d(num_wann, ham_R, R_vec, kpts[ik, :], ef)
         for ie in range(n_e):
             gR = np.linalg.inv(np.eye(num_wann, dtype=np.complex128) * (e_list[ie] + 1j * Eta) - ham_k)
             dos_k[ie, ik] = np.trace(gR).imag
-    return - np.sum(dos_k, axis=1) / pi / nkpt
+    return - np.sum(dos_k, axis=1) / np.pi / nkpts
 
 
 @njit(parallel=True, nogil=True)
-def get_self_energies(l_h0, l_t, l_dim,
-                      r_h0, r_t, r_dim,
-                      n_e, e_list,
-                      mu_l, mu_r, v_lc, v_rc, n_iter=25):
+def get_self_energies_epar(l_h0, l_t, l_dim,
+                           r_h0, r_t, r_dim,
+                           n_e, e_list,
+                           mu_l, mu_r, v_lc, v_rc, n_iter=25):
     n_lc = v_lc.shape[1]
     n_rc = v_rc.shape[1]
     sRl = np.zeros((n_e, n_lc, n_lc), dtype=np.complex128)
@@ -374,10 +357,22 @@ def _ham_k_system(ham_R, R_vec, R_vec_cart_T, num_wann, kpt, direction):
     eig_da = get_eig_da(eig, ham_k_da, uu, num_wann)
     return ham_k, eig, eig_da, uu
 
-
 # def get_spin_splitting(ham, num_wann):
 #     onsite = np.diagonal(ham).real
 #     return (- onsite[0:num_wann//2] + onsite[num_wann//2:num_wann]) / 2
+
+
+@njit(parallel=True, nogil=True)
+def get_eig_for_kpts_kpar(ham_R, R_vec, R_vec_cart_T, num_wann, kpts):
+    nkpts = kpts.shape[0]
+    eigs = np.zeros((nkpts, num_wann), dtype=float)
+    for ik in prange(nkpts):
+        kpt = kpts[ik]
+        fac = fourier_phase_R_to_k(R_vec, kpt)
+        ham_k = fourier_R_to_k(ham_R, R_vec_cart_T, fac)[0]
+        eig, uu = np.linalg.eigh(ham_k)
+        eigs[ik, :] = eig
+    return eigs
 
 
 @njit('float64(float64, float64, float64)', nogil=True)
@@ -397,25 +392,6 @@ def occ_fermi(eig, ef, eta):
     return 1.0 / (np.exp((eig - ef)/eta) + 1)
 
 # @njit(parallel=True)
-# def Sp2_mn(e_s, um, un, num_wann):
-#     """
-#     计算|<um|S+.delta_0|un>|^2，单位 eV^2
-#     @param e_s: real[num_wann/2] 各轨道在位自旋劈裂能
-#     @param um: complex[num_wann]左矢
-#     @param un: complex[num_wann]右矢
-#     @param num_wann: WF空间维度
-#     @return: real[num_wann, num_wann] |S+.delta_0|^2[n_, m_] 矩阵
-#     """
-#     sp2 = np.zeros((num_wann, num_wann), dtype=float)
-#     half = num_wann // 2
-#     for n_ in prange(num_wann):
-#         un_dn = np.ascontiguousarray(un[half:num_wann, n_])
-#         for m_ in prange(num_wann):
-#             um_up = np.ascontiguousarray(um[0:half, m_].conj())
-#             sp2[n_, m_] = abs(np.dot(um_up, un_dn * e_s))**2
-#     return sp2
-
-# @njit(parallel=True)
 # def sz_n(uu, num_wann: int):
 #     """
 #     计算 < un | Sz | un > 无量纲
@@ -433,303 +409,7 @@ def occ_fermi(eig, ef, eta):
 
 @njit
 def guess(x):
-    return 1.0 / (2.0 + exp(-x) + exp(+x))
-
-
-@njit(nogil=True)
-def _get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q, num_wann: int, ef: float, eta: float, q: float):
-    half = num_wann // 2
-    alpha_k = np.zeros(num_wann, dtype=np.float64)
-    alpha_qvd_k = np.zeros(num_wann, dtype=np.float64)
-    qvs_k = np.zeros(num_wann, dtype=np.float64)
-    alpha_k_n = np.zeros(num_wann, dtype=np.float64)
-    alpha_qvd_k_n = np.zeros(num_wann, dtype=np.float64)
-    qvs_k_n = np.zeros(num_wann, dtype=np.float64)
-    for n_ in prange(num_wann):
-        if abs(eig[n_] - ef) > eta * 16.0:
-            continue
-        # un_up = np.ascontiguousarray(uu[0:half, n_])
-        un_dn = np.ascontiguousarray(uu[half:num_wann, n_])
-        # sz = np.dot(un_up.conj(), un_up).real - np.dot(un_dn.conj(), un_dn).real
-        An = A_n(eig[n_], ef, eta)
-        alpha_k_n[:] = 0.0
-        alpha_qvd_k_n[:] = 0.0
-        qvs_k_n[:] = 0.0
-        for m_ in prange(num_wann):
-            um_up = np.ascontiguousarray(uu_q[0:half, m_])
-            sp2_q = abs(np.dot(um_up.conj(), un_dn * e_s))**2
-            Am = A_n(eig_q[m_], ef, eta)
-            # ww in units eV^-2
-            ww = An * Am
-            # alpha_k in units 1
-            alpha_k_n[m_] = sp2_q * ww
-            # qvd in units eV angst.
-            alpha_qvd_k_n[m_] = sp2_q * ww * (eig_q_da[m_] - eig_da[n_])
-            # qvs in units eV angst.
-            if n_ != m_:
-                d_eig_mn = eig_q[m_] - eig[n_]
-                if abs(d_eig_mn) < 1E-7:
-                    qvs_k_n[m_] = - sp2_q * ((eig_q_da[m_] * Am - eig_da[n_] * An)
-                                             / (d_eig_mn - 1E-7j)).real
-                else:
-                    qvs_k_n[m_] = - sp2_q * ((eig_q_da[m_] * Am - eig_da[n_] * An)
-                                         / d_eig_mn)
-            else:
-                # qvs_k_n[m_] = eta * q * ww * eig_da[n_] * eig_da[n_] * sz
-                # qvs_k_n[m_] = - sp2_q * (eig_q_da[n_] - eig_da[n_]) * An / (eig_q[n_] - eig[n_])
-                #             = - sp2_q * (eig_q_da[n_] - eig_da[n_]) * An / ( q * eig_da[n_])
-                #             = - sp2_q * (1 + q * eig_dda[n_]/eig_da[n_] -1) * An / q
-                #             = - sp2_q * (eig_dda[n_]/eig_da[n_]) * An
-                if abs(eig_da[n_] * q) < 1E-7:
-                    qvs_k_n[m_] = - sp2_q * ((eig_q_da[n_] * Am - eig_da[n_] * An)
-                                             / ( q * eig_da[n_] - 1E-7j)).real
-                else:
-                    qvs_k_n[m_] = - sp2_q * (eig_q_da[n_] / eig_da[n_] * Am - An) / q
-        alpha_k[n_] = np.sum(alpha_k_n)
-        alpha_qvd_k[n_] = np.sum(alpha_qvd_k_n)
-        qvs_k[n_] = np.sum(qvs_k_n)
-    return np.sum(alpha_k), np.sum(alpha_qvd_k), np.sum(qvs_k)
-
-
-@njit(parallel=True, nogil=True)
-def get_alpha_beta_kpar(ham_R, R_vec, R_vec_cart_T,
-                        num_wann, direction, e_s, kpts, q_frac, q, ef, eta, adpt_kpts, adpt_qvs=20):
-    nkpts = kpts.shape[0]
-    nadpt = adpt_kpts.shape[0]
-    ladpt = True if nadpt > 1 else False
-    o_k = np.zeros((nkpts, 3), dtype=np.float64)
-    for ik in prange(nkpts):
-        kpt = kpts[ik]
-        ham_k, eig, eig_da, uu = _ham_k_system(ham_R, R_vec, R_vec_cart_T,
-                                               num_wann, kpt, direction)
-        # k + q
-        ham_q, eig_q, eig_q_da, uu_q = _ham_k_system(ham_R, R_vec, R_vec_cart_T,
-                                                     num_wann, kpt + q_frac, direction)
-        o_k[ik, :] = _get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q,
-                                       num_wann, ef, eta, q)
-        if ladpt and np.abs(o_k[ik, 2]) > adpt_qvs:
-            _adpt_kpts = kpt + adpt_kpts
-            o_adpt = np.zeros((nadpt, 3), dtype=np.float64)
-            for iik in prange(nadpt):
-                _kpt = _adpt_kpts[iik]
-                ham_k, eig, eig_da, uu = _ham_k_system(ham_R, R_vec, R_vec_cart_T,
-                                                       num_wann, _kpt, direction)
-                # k + q
-                ham_q, eig_q, eig_q_da, uu_q = _ham_k_system(ham_R, R_vec, R_vec_cart_T,
-                                                             num_wann, _kpt + q_frac, direction)
-                o_k[ik, :] = _get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q,
-                                               num_wann, ef, eta, q)
-            o_k[ik, :] = np.sum(o_adpt, axis=0) / nadpt
-    return np.sum(o_k, axis=0) / nkpts
-
-
-@njit(nogil=True)
-def _get_alpha_beta_inter_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q, num_wann: int, ef: float, eta: float):
-    half = num_wann // 2
-    alpha_k = np.zeros(num_wann, dtype=np.float64)
-    alpha_qvd_k = np.zeros(num_wann, dtype=np.float64)
-    qvs_k = np.zeros(num_wann, dtype=np.float64)
-    alpha_k_n = np.zeros(num_wann, dtype=np.float64)
-    alpha_qvd_k_n = np.zeros(num_wann, dtype=np.float64)
-    qvs_k_n = np.zeros(num_wann, dtype=np.float64)
-    for n_ in prange(num_wann):
-        if abs(eig[n_] - ef) > eta * 16.0:
-            continue
-        # un_up = np.ascontiguousarray(uu[0:half, n_])
-        un_dn = np.ascontiguousarray(uu[half:num_wann, n_])
-        # sz = np.dot(un_up.conj(), un_up).real - np.dot(un_dn.conj(), un_dn).real
-        An = A_n(eig[n_], ef, eta)
-        alpha_k_n[:] = 0.0
-        alpha_qvd_k_n[:] = 0.0
-        qvs_k_n[:] = 0.0
-        for m_ in prange(num_wann):
-            if n_ == m_:
-                continue
-            um_up = np.ascontiguousarray(uu_q[0:half, m_])
-            sp2_q = abs(np.dot(um_up.conj(), un_dn * e_s)) ** 2
-            Am = A_n(eig_q[m_], ef, eta)
-            # ww in units eV^-2
-            ww = An * Am
-            # alpha_k in units 1
-            alpha_k_n[m_] = sp2_q * ww
-            # qvd in units eV angst.
-            alpha_qvd_k_n[m_] = sp2_q * ww * (eig_q_da[m_] - eig_da[n_])
-            # qvs in units eV angst.
-            d_eig_mn = eig_q[m_] - eig[n_]
-            if abs(d_eig_mn) < 1E-7:
-                qvs_k_n[m_] = - sp2_q * ((eig_q_da[m_] * Am - eig_da[n_] * An)
-                                         / (d_eig_mn - 1E-7j)).real
-            else:
-                qvs_k_n[m_] = - sp2_q * ((eig_q_da[m_] * Am - eig_da[n_] * An)
-                                         / d_eig_mn)
-
-        alpha_k[n_] = np.sum(alpha_k_n)
-        alpha_qvd_k[n_] = np.sum(alpha_qvd_k_n)
-        qvs_k[n_] = np.sum(qvs_k_n)
-    return np.sum(alpha_k), np.sum(alpha_qvd_k), np.sum(qvs_k)
-
-
-@njit(parallel=True, nogil=True)
-def get_alpha_beta_kpar_kpath(ham_R, R_vec, R_vec_cart_T,
-                              num_wann, direction, e_s, kpts, q_frac, q, ef, eta):
-    nkpts = kpts.shape[0]
-    o_k = np.zeros((nkpts, 6), dtype=float)
-    for ik in prange(nkpts):
-        kpt = kpts[ik]
-        ham_k, eig, eig_da, uu = _ham_k_system(ham_R, R_vec, R_vec_cart_T,
-                                               num_wann, kpt, direction)
-        # k + q
-        ham_q, eig_q, eig_q_da, uu_q = _ham_k_system(ham_R, R_vec, R_vec_cart_T,
-                                                     num_wann, kpt + q_frac, direction)
-        o_k[ik, 0:3] = _get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q,
-                                         num_wann, ef, eta, q)
-        o_k[ik, 3:6] = _get_alpha_beta_inter_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q,
-                                               num_wann, ef, eta)
-    return o_k
-
-
-@njit(nogil=True)
-def get_berry_curvature_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, eta):
-    """
-    berry curvature for a k-point in unit angst.^2
-    @param ham_R:
-    @param r_mat_R:
-    @param R_vec:
-    @param R_vec_cart_T:
-    @param num_wann:
-    @param kpt:
-    @param eta:
-    @return:
-    """
-    fac = fourier_phase_R_to_k(R_vec, kpt)
-    ham_out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[1, 2, 3])
-    A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
-    eig, uu = np.linalg.eigh(ham_out[0])
-    e_d = np.zeros((num_wann,num_wann), dtype=np.float64)
-    inv_e_d = np.zeros((num_wann,num_wann), dtype=np.float64)
-    for m_ in range(num_wann):
-        for n_ in range(num_wann):
-            if m_ == n_:
-                continue
-            e_d[m_, n_] = eig[m_] - eig[n_]
-            inv_e_d[m_, n_] = 1.0 / (e_d[m_, n_]*e_d[m_, n_] + eta * eta)
-            # inv_e_d[m_, n_] = 1.0 / (eig[m_] - eig[n_]) if abs(eig[m_] - eig[n_]) > 1e-7 else 0.0
-    Ah_k = np.zeros((3,num_wann,num_wann), dtype=np.complex128)
-    # A_bar^W_a[3, num_wann, num_wann] in units angst.
-
-    for i in range(3):
-        # D^H_a = UU^dag.del_a UU (a=x,y,z) = {H_bar^H_nma / (e_m - e_n)}
-        # A^H_a = A_bar^H_a + i D^H_a = i<psi_m| del_a psi_n>
-        Ah_k[i] = 1j * e_d * unitary_trans(A_bar_k[i], uu) - unitary_trans(ham_out[i+1], uu)
-    omega_k = np.zeros((3, num_wann), dtype=np.float64)
-    for n_ in range(num_wann):
-        omega_k[0, n_] = np.sum((Ah_k[1, n_, :] * Ah_k[2, :, n_] * inv_e_d[n_, :]).imag)
-        omega_k[1, n_] = np.sum((Ah_k[2, n_, :] * Ah_k[0, :, n_] * inv_e_d[n_, :]).imag)
-        omega_k[2, n_] = np.sum((Ah_k[0, n_, :] * Ah_k[1, :, n_] * inv_e_d[n_, :]).imag)
-    omega_k *= -2.0
-    return omega_k, eig
-
-
-@njit(nogil=True)
-def _get_berry_curvature_fg_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta):
-    fac = fourier_phase_R_to_k(R_vec, kpt)
-    ham_out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[1, 2, 3])
-    # A_bar^W_a[3, num_wann, num_wann] in units angst.
-    A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
-    Ah_k, eig = _get_berry_A_eig_k(ham_out, A_bar_k, num_wann)
-
-    ofg_k = np.zeros((3, num_wann), dtype=np.float64)
-    f = occ_fermi(eig, ef, eta)
-    g = 1.0 - f
-    for n_ in range(num_wann):
-        ofg_k[0, n_] = np.sum((Ah_k[1, n_, :] * g * Ah_k[2, :, n_]).imag)
-        ofg_k[1, n_] = np.sum((Ah_k[2, n_, :] * g * Ah_k[0, :, n_]).imag)
-        ofg_k[2, n_] = np.sum((Ah_k[0, n_, :] * g * Ah_k[1, :, n_]).imag)
-    ofg_k *= -2.0 * f
-    return ofg_k, eig
-
-
-@njit(nogil=True)
-def _get_ahc_fg_efs_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, efs, eta):
-    n_ef = efs.shape[0]
-    fac = fourier_phase_R_to_k(R_vec, kpt)
-    ham_out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[1, 2, 3])
-    A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
-    Ah_k, eig = _get_berry_A_eig_k(ham_out, A_bar_k, num_wann)
-    ofg_k = np.zeros((3, n_ef, num_wann), dtype=np.float64)
-    for i in range(n_ef):
-        ef = efs[i]
-        f = occ_fermi(eig, ef, eta)
-        g = 1.0 - f
-        for n_ in range(num_wann):
-            ofg_k[0, i, n_] = np.sum((Ah_k[1, n_, :] * g * Ah_k[2, :, n_]).imag)
-            ofg_k[1, i, n_] = np.sum((Ah_k[2, n_, :] * g * Ah_k[0, :, n_]).imag)
-            ofg_k[2, i, n_] = np.sum((Ah_k[0, n_, :] * g * Ah_k[1, :, n_]).imag)
-        ofg_k[0, i, :] *= f
-        ofg_k[1, i, :] *= f
-        ofg_k[2, i, :] *= f
-    ofg_k *= -2.0
-    return np.sum(ofg_k, axis=2)
-
-
-@njit(nogil=True)
-def _get_berry_A_eig_k(ham_out, A_bar_k, num_wann):
-    eig, uu = np.linalg.eigh(ham_out[0])
-    inv_e_d = np.zeros((num_wann, num_wann), dtype=np.float64)
-    for m_ in range(num_wann):
-        for n_ in range(num_wann):
-            if m_ == n_:
-                continue
-            e_d = eig[m_] - eig[n_]
-            inv_e_d[m_, n_] = 1.0 / e_d if abs(e_d) > 1e-7 else 0.0
-    Ah_k = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
-    # A_bar^W_a[3, num_wann, num_wann] in units angst.
-    for i in range(3):
-        # D^H_a = UU^dag.del_a UU (a=x,y,z) = {H_bar^H_nma / (e_m - e_n)}
-        # A^H_a = A_bar^H_a + i D^H_a = i<psi_m| del_a psi_n>
-        Ah_k[i] = unitary_trans(A_bar_k[i], uu) + 1j * unitary_trans(ham_out[i + 1], uu) * inv_e_d
-    return Ah_k, eig
-
-
-@njit(parallel=True, nogil=True)
-def get_ahc_kpar_fermi(ham_R, r_mat_R, R_vec, R_vec_cart_T,
-                       num_wann, kpts, efs, eta):
-    fac = - TwoPi
-    nkpts = kpts.shape[0]
-    n_ef = efs.shape[0]
-    list_o_ef_k = np.zeros((3, n_ef, nkpts), dtype=np.float64)
-    for ik in prange(nkpts):
-        kpt = kpts[ik]
-        list_o_ef_k[:, :, ik] = _get_ahc_fg_efs_k(
-            ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, efs, eta)
-    return (np.sum(list_o_ef_k, axis=2) / nkpts * fac).T
-
-
-@njit(parallel=True, nogil=True)
-def get_morb_berry_kpar_kpath(ham_R, r_mat_R, R_vec, R_vec_cart_T,
-                              num_wann, kpts, ef, eta, direction):
-    fac = 1e-8 / Hbar_ / Mu_B_
-    nkpts = kpts.shape[0]
-    morb_k = np.zeros(nkpts, dtype=np.float64)
-    for ik in prange(nkpts):
-        kpt = kpts[ik]
-        # oo, eig = get_berry_curvature_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, eta)
-        oo, eig = _get_berry_curvature_fg_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta)
-        morb_k[ik] = np.sum(oo[direction-1, :] * (ef - eig))
-    return morb_k * fac
-
-
-@njit(parallel=True, nogil=True)
-def get_morb_berry_kpar(ham_R, r_mat_R, R_vec, R_vec_cart_T,
-                        num_wann, kpts, ef, eta, direction):
-    fac = 1e-8 / Hbar_ / Mu_B_
-    nkpts = kpts.shape[0]
-    morb_k = np.zeros(nkpts, dtype=np.float64)
-    for ik in prange(nkpts):
-        kpt = kpts[ik]
-        oo, eig = _get_berry_curvature_fg_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta)
-        morb_k[ik] = np.sum(oo[direction - 1, :] * (ef - eig))
-    return np.sum(morb_k) * fac / nkpts
+    return 1.0 / (2.0 + np.exp(-x) + np.exp(+x))
 
 
 @njit(parallel=True, nogil=True)

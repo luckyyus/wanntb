@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
-from .utility import TwoPi, Orbitals, get_list_index, get_dos_e
+from .constant import TwoPi, Orbitals
+from .utility import get_list_index, get_dos_e_kpar
 from time import time
 from ._system import TBSystem
 """
@@ -25,8 +26,8 @@ input.yml文件的设置：
 
 class LayeredSystem(TBSystem):
 
-    def __init__(self, tb_file='wannier90_tb.dat', lspinors=True):
-        super().__init__(tb_file=tb_file)
+    def __init__(self, tb_file='wannier90_tb.dat',npz_file=None, lspinors=True):
+        super().__init__(tb_file=tb_file, npz_file=npz_file)
         self.l_spinors = lspinors
         self.n_wann_half = self.num_wann // 2
 
@@ -54,8 +55,8 @@ class LayeredSystem(TBSystem):
         kpts[:, 1] = kpty.reshape(nkpt)
         dos = np.zeros((e_list.shape[0], 2), dtype=float)
         dos[:, 0] = e_list
-        dos[:, 1] = get_dos_e(self.num_wann, self.ham_R, self.R_vec, self.n_degen, efermi, n_e, e_list,
-                              nkpt)
+        dos[:, 1] = get_dos_e_kpar(self.num_wann, self.ham_R, self.R_vec, efermi, n_e, e_list,
+                                   nkpt)
         # for i in range(e_list.shape[0]):
         #     dos[i, 1] = get_dos_e(self.num_wann, self.ham_R, self.n_Rpts, self.R_vec, self.n_degen, efermi,
         #                           e_list[i], nkpt, kpts)

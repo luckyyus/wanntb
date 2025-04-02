@@ -1,7 +1,8 @@
 import numpy as np
 from ._layeredsystem import LayeredSystem, Structure
-from .utility import H_, _surface_GR, transmission_k, get_self_energies
+from .utility import _surface_GR, transmission_k2d_kpar, get_self_energies_epar
 from time import time
+from .constant import H_
 
 
 class Lead:
@@ -20,12 +21,6 @@ class Lead:
             self.max_z = self.t.shape[0]
 
     def surface_GR(self, energy, mu=0.0, n_iter=1000):
-        # gR0 = np.linalg.inv(np.eye(self.n_dim) * (energy + 1j * Eta - mu) - self.h0)
-        # for i in range(n_iter):
-        #     if self.max_z == 1:  # 目前就做了最近邻，其他的先空着
-        #         sigmaR = self.t.T.conjugate().dot(gR0).dot(self.t)
-        #         gR0 = np.linalg.inv(np.eye(self.n_dim) * energy - self.h0 - sigmaR)
-        # return gR0
         return _surface_GR(energy, self.n_dim, self.h0, self.t, mu=mu, n_iter=n_iter)
 
     def surface_GA(self, energy, mu=0.0, n_iter=1000):
@@ -121,14 +116,14 @@ class NEGF:
         kpts[:, 0] = kptx.reshape(nkpt)
         kpts[:, 1] = kpty.reshape(nkpt)
 
-        sRl, sRr, gm_l, gm_r = get_self_energies(self.lead_l.h0, self.lead_l.t, self.lead_l.n_dim,
-                                                 self.lead_r.h0, self.lead_r.t, self.lead_r.n_dim,
-                                                 n_e, e_list, mu_l, mu_r, self.v_lc, self.v_rc,
-                                                 self.paras['lead_num_iter'])
+        sRl, sRr, gm_l, gm_r = get_self_energies_epar(self.lead_l.h0, self.lead_l.t, self.lead_l.n_dim,
+                                                      self.lead_r.h0, self.lead_r.t, self.lead_r.n_dim,
+                                                      n_e, e_list, mu_l, mu_r, self.v_lc, self.v_rc,
+                                                      self.paras['lead_num_iter'])
         print('self energies is calculated. time: %8.2f' % (time() - start))
         np.savetxt('gm_l_0.txt', gm_l[0, :, :], '%16.8e')
-        trans_s[:, 1] = transmission_k(self.device.num_wann, self.device.ham_R, self.device.R_vec, self.device.n_degen,
-                                       mu, self.li_lc, self.li_rc, sRl, sRr, gm_l, gm_r, n_e, e_list, nkpt, kpts)
+        trans_s[:, 1] = transmission_k2d_kpar(self.device.num_wann, self.device.ham_R, self.device.R_vec,
+                                              mu, self.li_lc, self.li_rc, sRl, sRr, gm_l, gm_r, e_list, kpts)
         # for i in range(e_list.shape[0]):
         #     # 左电极 表面格林函数 自能 展宽态密度
         #     gsRl = self.lead_l.surface_GR(e_list[i], mu_l, self.paras['lead_num_iter'])

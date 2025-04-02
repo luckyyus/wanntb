@@ -16,12 +16,12 @@ tb = wanntb.TBSystem(npz_file=npzfile)
 
 
 
-kmesh = 192
+kmesh = 384
 # output = tb.get_occ_kmesh_fermi((kmesh,kmesh,1), 2.1000, 2.3000, 400, eta=5e-4)
-output = tb.get_ahc_kmesh_fermi((kmesh,kmesh,1), 2.0200, 2.4200, 400, eta=5e-4)
+output = tb.get_ahc_kmesh_fermi((kmesh,kmesh,1), 2.0200, 2.4200, 200, eta=1e-4)
 
 # AgRuO
-# output = tb.get_morb_berry_kpath(ef, kpath, nkpts_path=200, direction=3, eta=1e-4)
+# output = tb.get_morb_berry_kpath(ef, kpath, nkpts_path=200, direction=3, eta=1e-5)
 
 # np.savetxt(path + '-morb-kz.txt', output, fmt='%16.8e')
 np.savetxt(path + '-ahc-k%d.txt' % kmesh, output, fmt='%16.6f')

@@ -35,6 +35,17 @@ tb = wanntb.TBSystem(npz_file='wannier90-tb.npz')
 eig, uu = tb.get_eig_uu_for_one_kpt(kpt)
 ```
 
+#### Calculate eigenvalues inside an ellipsoidal reciprocal space around one k-point :
+```
+kmesh = (64, 64, 64) # this is the k-mesh for the whole BZ
+center = (0.0, 0.0, 0.0) # the center k-point in reduced coordinates
+distance_cart = (0.25, 0.25, 0.03) # the axis for the ellipsoidal space in Cartesian coordinates
+eigs, kpts_frac, kpts_cart = tb.get_eig_for_kpts_around(kmesh, center, distance_cart)
+```
+The unit of k-point/distances in Cartesian coordinates is angst.$^{-1}$.
+
+### Magnetic related properties
+
 #### Calculate $\alpha$ and $\beta$
 ```
 ef = xxx
@@ -42,6 +53,16 @@ mag = xxx
 alpha, alpha_qvd, qvs, beta, ratio = tb.get_alpha_beta((64, 64, 64), ef, mag, eta=1e-3, q=1e-6, adpt_mesh=None)
 ```
 To use adaptive k-mesh, set `adpt_mesh=(4,4,4)` 
+
+We can also calculate $\alpha$ and $\beta$ with a list of Fermi energy 
+```
+ef0 = xxx # the center of the Fermi energy list
+mu_d = 0.01 # the Fermi energy list is ranged from ef0-mu_d to ef0+mu_d
+n_ef = 10 # Total number of Fermi energy is n_ef+1, the endpoint is included
+out = tb.get_alpha_beta_fermi((kmesh, kmesh, kmesh), ef0, mu_d, n_ef, mag, eta=eta, adpt_mesh=(4,4,4))
+```
+The output data is in the shape (n_ef+1, 6).
+The columns represent: mu, alpha, alpha_qvd, qvs, beta, ratio
 
 ### Berry curvature related calculations
 
@@ -64,7 +85,7 @@ output = tb.get_morb_berry_kpath(ef, kpath, nkpts_path=500, direction=3, eta=1e-
 
 ```
 The first column is the 1D k-point length in units angst.$^{-1}$.
-The second column is the orbit moment in units $\mu_B$
+The second column is the orbit moment in units $\mu_B$.
 
 
 ## To do list
