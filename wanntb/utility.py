@@ -339,7 +339,7 @@ def get_eig_da(eig, ham_da, uu, num_wann, eig_diff=1e-4):
 
 
 @njit(nogil=True)
-def _ham_k_system(ham_R, R_vec, R_vec_cart_T, num_wann, kpt, direction):
+def _ham_k_da_system(ham_R, R_vec, R_vec_cart_T, num_wann, kpt, direction):
     """
     计算一个k点的哈密顿量、本征值、征值随k的某个方向的导数和本征态。
     @param ham_R: R空间的紧束缚哈密顿量
@@ -360,6 +360,14 @@ def _ham_k_system(ham_R, R_vec, R_vec_cart_T, num_wann, kpt, direction):
 # def get_spin_splitting(ham, num_wann):
 #     onsite = np.diagonal(ham).real
 #     return (- onsite[0:num_wann//2] + onsite[num_wann//2:num_wann]) / 2
+
+
+@njit(nogil=True)
+def _ham_k_system(ham_R, R_vec, R_vec_cart_T, kpt):
+    fac = fourier_phase_R_to_k(R_vec, kpt)
+    ham_k = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[5])[0]
+    eig, uu = np.linalg.eigh(ham_k)
+    return ham_k, eig, uu
 
 
 @njit(parallel=True, nogil=True)
@@ -419,32 +427,15 @@ def get_carrier_kpar(ham_R, R_vec, R_vec_cart_T,
     list_o_k = np.zeros(nkpts, dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
-        ham_k, eig, eig_da, uu = _ham_k_system(ham_R, R_vec, R_vec_cart_T,
-                                               num_wann, kpt, direction)
+        ham_k, eig, eig_da, uu = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T,
+                                                  num_wann, kpt, direction)
         # k + q
-        ham_q, eig_q, eig_q_da, uu_q = _ham_k_system(ham_R, R_vec, R_vec_cart_T,
-                                                     num_wann, kpt + q_frac, direction)
+        ham_q, eig_q, eig_q_da, uu_q = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T,
+                                                        num_wann, kpt + q_frac, direction)
         eig_dd_inv = (q / (eig_q_da - eig_da - 1j * eta/q)).real
         n_eig_ef = A_vec(eig, ef, eta)
         list_o_k[ik] = np.sum(n_eig_ef * eig_dd_inv * eig_da * eig_da)
     return np.sum(list_o_k) / (nkpts * TwoPi * TwoPi)
-
-
-@njit(parallel=True, nogil=True)
-def get_occ_kpar(ham_R, R_vec, R_vec_cart_T, kpts, efs, eta):
-    nkpts = kpts.shape[0]
-    n_ef = efs.shape[0]
-    occ_ef_k = np.zeros((n_ef, nkpts), dtype=np.float64)
-    for ik in prange(nkpts):
-        kpt = kpts[ik]
-        phase_fac = fourier_phase_R_to_k(R_vec, kpt)
-        ham_k = fourier_R_to_k(ham_R, R_vec_cart_T, phase_fac, iout=[5])[0]
-        eig = np.linalg.eigvalsh(ham_k)
-        for i in range(n_ef):
-            ef = efs[i]
-            occ = occ_fermi(eig, ef, eta)
-            occ_ef_k[i, ik] = np.sum(occ)
-    return np.sum(occ_ef_k, axis=1) / nkpts
 
 
 def get_kpts_mesh(kmesh):

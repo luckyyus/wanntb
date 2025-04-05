@@ -2,6 +2,7 @@ import numpy as np
 from datetime import datetime
 from . import utility as ut
 from .constant import Cart, TwoPi, Hbar_
+from ._dos import get_occ_kpar, get_occ_proj_kpar
 from ._berry import get_ahc_kpar_fermi, get_morb_berry_kpar_kpath, get_morb_berry_kpar
 from ._alpha_beta import get_alpha_beta_kpar, get_alpha_beta_kpar_kpath, get_alpha_beta_efs_kpar
 # spec = [
@@ -281,15 +282,25 @@ class TBSystem:
         print('time used: %24.2f <-- get_ahc_kmesh_fermi' % (datetime.now() - start).total_seconds())
         return output
 
-    def get_occ_kmesh_fermi(self, kmesh, ef_min, ef_max, n_ef, eta=1e-4):
+    def get_occ_kmesh_fermi(self, kmesh, ef_min, ef_max, n_ef, eta=1e-4, lproj=False):
         start = datetime.now()
         kpts = ut.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         efs = np.linspace(ef_min, ef_max, n_ef+1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
-        occ_efs = ut.get_occ_kpar(self.ham_R, self._Rvec, self.R_vec_cart_T, kpts, efs, eta)
-        output = np.zeros((efs.shape[0], 2), dtype=float)
-        output[:, 0] = efs
-        output[:, 1] = occ_efs
+        if lproj:
+            # occ_p_efs[n_ef, n_proj]
+            occ_p_efs = get_occ_proj_kpar(self.ham_R, self._Rvec, self.R_vec_cart_T,
+                                          self.num_wann, kpts, efs, eta)
+            occ_efs = np.sum(occ_p_efs, axis=1)
+            output = np.zeros((efs.shape[0], 2+self.num_wann), dtype=float)
+            output[:, 0] = efs
+            output[:, 1] = occ_efs
+            output[:, 2:] = occ_p_efs
+        else:
+            occ_efs = get_occ_kpar(self.ham_R, self._Rvec, self.R_vec_cart_T, kpts, efs, eta)
+            output = np.zeros((efs.shape[0], 2), dtype=float)
+            output[:, 0] = efs
+            output[:, 1] = occ_efs
         print('time used: %24.2f <-- get_occ_kmesh_fermi' % (datetime.now() - start).total_seconds())
         return output
