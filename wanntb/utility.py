@@ -399,6 +399,13 @@ def A_vec(eig, ef, eta):
 def occ_fermi(eig, ef, eta):
     return 1.0 / (np.exp((eig - ef)/eta) + 1)
 
+
+@njit(nogil=True)
+def dos_fermi(eig, ef, eta):
+    fac = (eig - ef) / eta
+    return 1.0 / (np.exp(fac) + 1) / (1 + np.exp(-fac)) / eta
+
+
 # @njit(parallel=True)
 # def sz_n(uu, num_wann: int):
 #     """
