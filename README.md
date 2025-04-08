@@ -44,6 +44,25 @@ eigs, kpts_frac, kpts_cart = tb.get_eig_for_kpts_around(kmesh, center, distance_
 ```
 The unit of k-point/distances in Cartesian coordinates is angst.$^{-1}$.
 
+### Density-of-state (DOS) and projected-DOS (PDOS)
+
+#### Calculate occupancy and DOS 
+```
+kmesh = (64, 64, 64)
+e_min = 1.0
+e_max = 11.0
+n_ef = 2000
+occ, dos = tb.get_occ_dos_kmesh_fermi(kmesh, e_min, e_max, 2000, eta=1e-4, lproj=False)
+# if lproj=True, the PDOS for each WF will be calculated
+```
+`occ` and `doc` are the occupancy and DOS as a function of energies. 
+For `lproj=False`, the shapes of `occ` and `doc` are both `(n_ef+1, 2)`.
+The first column is for the energy and the second column is for the corresponding results (the occupancy and DOS).
+For `lproj=True`, the shapes of `occ` and `doc` are both `(n_ef+1, 2+num_wann)`
+where `num_wann` is the number of WF.
+The WF-projected results (occupancies or PDOS for each WF orbitals) are 
+in the corresponding columns following the first two.
+
 ### Magnetic related properties
 
 #### Calculate $\alpha$ and $\beta$

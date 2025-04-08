@@ -11,5 +11,5 @@ tb = wanntb.TBSystem(npz_file=npzfile)
 kmesh = 32
 occ, dos = tb.get_occ_dos_kmesh_fermi((kmesh, kmesh, kmesh), 6.0, 8.0, 1000, eta=1e-2, lproj=True)
 
-np.savetxt(path + '-occ-k%d.txt' % (kmesh), occ, fmt='%12.6f')
-np.savetxt(path + '-dos-k%d.txt' % (kmesh), dos, fmt='%12.6f')
+np.savetxt(path + '-occ-k%d.txt' % kmesh, occ, fmt='%12.6f')
+np.savetxt(path + '-dos-k%d.txt' % kmesh, dos, fmt='%12.6f')
