@@ -1,6 +1,6 @@
 import numpy as np
 from numba import njit, prange
-from .constant import TwoPi, Eta
+from .constant import TwoPi, Eta_4
 
 
 def get_list_index(item, li):
@@ -29,7 +29,7 @@ def _surface_GR(energy, n_dim, h0, t, mu=0.0, n_iter=25):
     """
     a0 = t
     b0 = np.ascontiguousarray(t.T.conjugate())
-    e0 = h0 - np.eye(n_dim) * (1j * Eta - mu)
+    e0 = h0 - np.eye(n_dim) * (1j * Eta_4 - mu)
     es = e0.copy()
     for i in range(n_iter):
         # if self.max_z == 1:  # 目前就做了最近邻，其他的先空着
@@ -127,7 +127,7 @@ def get_dos_e_kpar(num_wann, ham_R, R_vec, ef, n_e, e_list, nkpts, kpts):
     for ik in prange(nkpts):
         ham_k = _get_ham_k2d(num_wann, ham_R, R_vec, kpts[ik, :], ef)
         for ie in range(n_e):
-            gR = np.linalg.inv(np.eye(num_wann, dtype=np.complex128) * (e_list[ie] + 1j * Eta) - ham_k)
+            gR = np.linalg.inv(np.eye(num_wann, dtype=np.complex128) * (e_list[ie] + 1j * Eta_4) - ham_k)
             dos_k[ie, ik] = np.trace(gR).imag
     return - np.sum(dos_k, axis=1) / np.pi / nkpts
 

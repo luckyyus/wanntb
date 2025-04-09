@@ -55,31 +55,31 @@ def _get_berry_A_eig_k(ham_out, A_bar_k, num_wann):
 
 
 @njit(nogil=True)
-def _get_of_k(Ah_k, f, num_wann):
-    ofg_k = np.zeros((3, num_wann), dtype=np.float64)
+def _get_of(Ah_k, f, num_wann):
+    of_k = np.zeros((3, num_wann), dtype=np.float64)
     g = 1.0 - f
     for n_ in range(num_wann):
-        ofg_k[0, n_] = np.sum((Ah_k[1, n_, :] * g * Ah_k[2, :, n_]).imag)
-        ofg_k[1, n_] = np.sum((Ah_k[2, n_, :] * g * Ah_k[0, :, n_]).imag)
-        ofg_k[2, n_] = np.sum((Ah_k[0, n_, :] * g * Ah_k[1, :, n_]).imag)
-    ofg_k *= -2.0 * f
-    return ofg_k
+        of_k[0, n_] = np.sum((Ah_k[1, n_, :] * g * Ah_k[2, :, n_]).imag)
+        of_k[1, n_] = np.sum((Ah_k[2, n_, :] * g * Ah_k[0, :, n_]).imag)
+        of_k[2, n_] = np.sum((Ah_k[0, n_, :] * g * Ah_k[1, :, n_]).imag)
+    of_k *= -2.0 * f
+    return of_k
 
 
 @njit(nogil=True)
-def _get_berry_curvature_fg_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta):
+def _get_berry_curv_f_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta):
     fac = fourier_phase_R_to_k(R_vec, kpt)
     ham_out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[1, 2, 3])
     # A_bar^W_a[3, num_wann, num_wann] in units angst.
     A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
     Ah_k, eig = _get_berry_A_eig_k(ham_out, A_bar_k, num_wann)
     f = occ_fermi(eig, ef, eta)
-    ofg_k = _get_of_k(Ah_k, f, num_wann)
-    return ofg_k, eig
+    of_k = _get_of(Ah_k, f, num_wann)
+    return of_k, eig
 
 
 @njit(nogil=True)
-def _get_berry_curvature_fg_efs_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, efs, eta):
+def _get_berry_curv_f_efs_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, efs, eta):
     n_ef = efs.shape[0]
     fac = fourier_phase_R_to_k(R_vec, kpt)
     ham_out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[1, 2, 3])
@@ -89,7 +89,7 @@ def _get_berry_curvature_fg_efs_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann,
     for i in range(n_ef):
         ef = efs[i]
         f = occ_fermi(eig, ef, eta)
-        ofg_k[:, i, :] = _get_of_k(Ah_k, f, num_wann)
+        ofg_k[:, i, :] = _get_of(Ah_k, f, num_wann)
     return np.sum(ofg_k, axis=2)
 
 
@@ -102,7 +102,7 @@ def get_ahc_kpar_fermi(ham_R, r_mat_R, R_vec, R_vec_cart_T,
     list_o_ef_k = np.zeros((3, n_ef, nkpts), dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
-        list_o_ef_k[:, :, ik] = _get_berry_curvature_fg_efs_k(
+        list_o_ef_k[:, :, ik] = _get_berry_curv_f_efs_k(
             ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, efs, eta)
     return (np.sum(list_o_ef_k, axis=2) / nkpts * fac).T
 
@@ -116,7 +116,7 @@ def get_morb_berry_kpar_kpath(ham_R, r_mat_R, R_vec, R_vec_cart_T,
     for ik in prange(nkpts):
         kpt = kpts[ik]
         # oo, eig = get_berry_curvature_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, eta)
-        oo, eig = _get_berry_curvature_fg_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta)
+        oo, eig = _get_berry_curv_f_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta)
         morb_k[ik] = np.sum(oo[direction-1, :] * (ef - eig))
     return morb_k * fac
 
@@ -129,6 +129,6 @@ def get_morb_berry_kpar(ham_R, r_mat_R, R_vec, R_vec_cart_T,
     morb_k = np.zeros(nkpts, dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
-        oo, eig = _get_berry_curvature_fg_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta)
+        oo, eig = _get_berry_curv_f_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta)
         morb_k[ik] = np.sum(oo[direction - 1, :] * (ef - eig))
     return np.sum(morb_k) * fac / nkpts
