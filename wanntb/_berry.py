@@ -94,6 +94,19 @@ def _get_berry_curv_f_efs_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, 
 
 
 @njit(parallel=True, nogil=True)
+def get_berry_curv_kpar_kpath(ham_R, r_mat_R, R_vec, R_vec_cart_T,
+                              num_wann, kpts, ef, eta):
+    # fac = - 1.0
+    nkpts = kpts.shape[0]
+    list_o_k = np.zeros((3, nkpts), dtype=np.float64)
+    for ik in prange(nkpts):
+        kpt = kpts[ik]
+        list_o_k[:, ik], eig = _get_berry_curv_f_eig_k(
+            ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta)
+    return - list_o_k.T
+
+
+@njit(parallel=True, nogil=True)
 def get_ahc_kpar_fermi(ham_R, r_mat_R, R_vec, R_vec_cart_T,
                        num_wann, kpts, efs, eta):
     fac = - TwoPi
