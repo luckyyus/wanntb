@@ -4,7 +4,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "wanntb"
 version = "2025.4.8"
-authors = [{name = 'Jie-Xiang Yu', email = 'kaelthas.yu@gmail.com'}, {name = 'Hong-Fei Huang'}]
+authors = [{name = 'Jie-Xiang Yu', email = 'kaelthas.yu@gmail.com'},
+    {name = 'Hong-Fei Huang'},
+    {name = 'Bao-Feng Chen', email = 'baofengchen2024@gmail.com'}]
 description = 'Toolkits based on WF based tight-binding Hamiltonian'
 readme = 'README.md'
 dependencies = ['numpy>1.16', 'numba>0.50', 'pandas']
