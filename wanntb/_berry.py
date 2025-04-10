@@ -58,6 +58,7 @@ def _get_Ah_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt):
     return Ah_k, eig
 
 
+@njit(nogil=True)
 def _get_Ah_bar_Dh_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt):
     fac = fourier_phase_R_to_k(R_vec, kpt)
     ham_out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[1, 2, 3])
@@ -179,7 +180,7 @@ def get_ahc_kpar_fermi(ham_R, r_mat_R, R_vec, R_vec_cart_T,
     for ik in prange(nkpts):
         kpt = kpts[ik]
         if lnew:
-            list_o_ef_k[:, :, ik] = _get_berry_curv_f_eig_k_new(
+            list_o_ef_k[:, :, ik] = _get_berry_curv_f_efs_k_new(
                 ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, efs, eta)
         else:
             list_o_ef_k[:, :, ik] = _get_berry_curv_f_efs_k(

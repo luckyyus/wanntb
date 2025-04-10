@@ -19,7 +19,11 @@ tb = wanntb.TBSystem(npz_file=npzfile)
 
 # MBT-sl3
 # kmesh = 384
-# output = tb.get_ahc_kmesh_fermi((kmesh,kmesh,1), 2.0200, 2.4200, 200, eta=1e-4)
+# output = tb.get_ahc_kmesh_fermi((kmesh,kmesh,1), 2.0200, 2.4200, 200, eta=1e-3)
+# np.savetxt(path + '-ahc-k%d.txt' % kmesh, output, fmt='%16.6f')
+# output = tb.get_ahc_kmesh_fermi((kmesh,kmesh,1), 2.0200, 2.4200, 200, eta=1e-3, lnew=True)
+# np.savetxt(path + '-ahc-k%d-2.txt' % kmesh, output, fmt='%16.6f')
+
 
 # AgRuO
 output = tb.get_morb_berry_kpath(ef, kpath, nkpts_path=200, direction=3, eta=1e-6)
@@ -30,5 +34,5 @@ output = tb.get_morb_berry_kpath(ef, kpath, nkpts_path=200, direction=3, eta=1e-
 np.savetxt(path + '-morb-zgz-2.txt', output, fmt='%16.8e')
 output = tb.get_berry_curv_kpath(ef, kpath, nkpts_path=200, eta=1e-6, lnew=True)
 np.savetxt(path + '-omega-zgz-2.txt', output, fmt='%16.8e')
-# np.savetxt(path + '-ahc-k%d.txt' % kmesh, output, fmt='%16.6f')
+
 # np.savetxt(path + '-occ-k%d.txt' % kmesh, output, fmt='%16.6f')
