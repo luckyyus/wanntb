@@ -3,7 +3,7 @@ from datetime import datetime
 from . import utility as ut
 from .constant import Cart, TwoPi, Hbar_
 from ._dos import get_occ_dos_kpar, get_occ_dos_proj_kpar
-from ._berry import get_ahc_kpar_fermi, get_morb_berry_kpar_kpath, get_morb_berry_kpar, get_berry_curv_kpar_kpath
+from ._berry import get_ahc_kpar_fermi, get_morb_berry_kpar_kpath, get_morb_berry_kpar, get_berrycurv_kpar_kpath
 from ._alpha_beta import get_alpha_beta_kpar, get_alpha_beta_kpar_kpath, get_alpha_beta_efs_kpar
 # spec = [
 #     ('seedname', numba.core.string),
@@ -246,13 +246,13 @@ class TBSystem:
         print('time used: %24.2f <-- get_carrier' % (datetime.now() - start).total_seconds())
         return sum_o
 
-    def get_berry_curv_kpath(self, ef, kpath, nkpts_path=100, eta=1e-4, lnew=False):
+    def get_berrycurv_kpath(self, ef, kpath, nkpts_path=100, eta=1e-4, lnew=False):
         start = datetime.now()
         print('---------- start get_berry_curv_kpath ----------')
         kpts, kpts_len = ut.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
-        omega = get_berry_curv_kpar_kpath(self.ham_R, self.r_mat_R, self._Rvec, self.R_vec_cart_T,
-                                          self.num_wann, kpts, ef, eta, lnew)
+        omega = get_berrycurv_kpar_kpath(self.ham_R, self.r_mat_R, self._Rvec, self.R_vec_cart_T,
+                                         self.num_wann, kpts, ef, eta, lnew)
         list_o_k = np.column_stack((kpts_len, omega))
         print('time used: %24.2f <-- get_berry_curv_kpath' % (datetime.now() - start).total_seconds())
         return list_o_k
