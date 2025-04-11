@@ -117,19 +117,20 @@ def _get_f_omega_new(Ah_bar_k, Dh_k, f, num_wann):
     i_A = [1, 2, 0]
     i_B = [2, 0, 1]
     g = 1.0 - f
-    # Diag[Im(A(H)_bar_alpha.A(H)_bar_beta)]
+    # Diag[Im(A_bar^H_alpha.A_bar^H_beta)]
     o_bar = np.zeros((3, num_wann), dtype=np.float64)
-    # omega_i = np.zeros((3, num_wann), dtype=np.float64)
-    # Diag[Im(D(H)_bar_alpha.D(H)_bar_beta)]
+    # Diag[Re(D^H_alpha.A_bar^H_beta - D^H_beta.A_bar^H_alpha)]
+    omega_i = np.zeros((3, num_wann), dtype=np.float64)
+    # Diag[Im(D^H_alpha.D^H_beta)]
     o_d = np.zeros((3, num_wann), dtype=np.float64)
     for i in range(3):
         for n_ in range(num_wann):
             o_bar[i, n_] = np.sum((Ah_bar_k[i_A[i], n_, :] * Ah_bar_k[i_B[i], :, n_]).imag)
-            # omega_i[i, n_] = np.sum(g *
-            #                           (Dh_k[i_A[i], n_, :] * Ah_bar_k[i_B[i], :, n_]
-            #                            - Dh_k[i_B[i], n_, :] * Ah_bar_k[i_A[i], :, n_]).imag)
+            omega_i[i, n_] = np.sum(g *
+                                      ((Dh_k[i_A[i], n_, :] * Ah_bar_k[i_B[i], :, n_]).real
+                                       - (Dh_k[i_B[i], n_, :] * Ah_bar_k[i_A[i], :, n_]).real))
             o_d[i, n_] = np.sum((Dh_k[i_A[i], n_, :] * g * Dh_k[i_B[i], :, n_]).imag)
-    omega = (o_bar - o_d) * f
+    omega = (o_bar + omega_i - o_d) * f
     omega *= -2.0
     return omega
 
