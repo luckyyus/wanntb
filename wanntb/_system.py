@@ -4,7 +4,8 @@ from . import kpoints as kp
 from . import utility as ut
 from .constant import Cart, TwoPi, Hbar_
 from ._dos import get_occ_dos_kpar, get_occ_dos_proj_kpar
-from ._berry import get_ahc_kpar_fermi, get_morb_berry_kpar_kpath, get_morb_berry_kpar, get_berrycurv_kpar_kpath
+from ._berry import get_ahc_kpar_fermi, get_morb_berry_kpar_kpath, get_morb_berry_kpar, \
+                     get_berrycurv_kpar_kpath, get_shc_kpar_fermi
 from ._alpha_beta import get_alpha_beta_kpar, get_alpha_beta_kpar_kpath, get_alpha_beta_efs_kpar
 # spec = [
 #     ('seedname', numba.core.string),
@@ -247,40 +248,40 @@ class TBSystem:
         print('time used: %24.2f <-- get_carrier' % (datetime.now() - start).total_seconds())
         return sum_o
 
-    def get_berrycurv_kpath(self, ef, kpath, nkpts_path=100, eta=1e-4, lnew=False):
+    def get_berrycurv_kpath(self, ef, kpath, nkpts_path=100, eta=1e-4):
         start = datetime.now()
         print('---------- start get_berrycurv_kpath ----------')
         kpts, kpts_len = kp.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         omega = get_berrycurv_kpar_kpath(self.ham_R, self.r_mat_R, self._Rvec, self.R_vec_cart_T,
-                                         self.num_wann, kpts, ef, eta, lnew)
+                                         self.num_wann, kpts, ef, eta)
         list_o_k = np.column_stack((kpts_len, omega))
         print('time used: %24.2f <-- get_berrycurv_kpath' % (datetime.now() - start).total_seconds())
         return list_o_k
 
-    def get_morb_berry_kpath(self, ef, kpath, nkpts_path=100, direction=1, eta=1e-4, lnew=False):
+    def get_morb_berry_kpath(self, ef, kpath, nkpts_path=100, direction=1, eta=1e-4):
         start = datetime.now()
         print('---------- start get_morb_berry_kpath ----------')
         kpts, kpts_len = kp.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         morb = get_morb_berry_kpar_kpath(self.ham_R, self.r_mat_R, self._Rvec, self.R_vec_cart_T,
-                                         self.num_wann, kpts, ef, eta, direction, lnew)
+                                         self.num_wann, kpts, ef, eta, direction)
         list_o_k = np.column_stack((kpts_len, morb))
         print('time used: %24.2f <-- get_morb_berry_kpath' % (datetime.now() - start).total_seconds())
         return list_o_k
 
-    def get_morb_berry_kmesh(self, ef, kmesh, direction=1, eta=1e-4, lnew=False):
+    def get_morb_berry_kmesh(self, ef, kmesh, direction=1, eta=1e-4):
         start = datetime.now()
         print('---------- start get_morb_berry_kmesh ----------')
         kpts = kp.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         print('E-fermi: %8.4f' % ef)
         morb = get_morb_berry_kpar(self.ham_R, self.r_mat_R, self._Rvec, self.R_vec_cart_T,
-                                   self.num_wann, kpts, ef, eta, direction, lnew)
+                                   self.num_wann, kpts, ef, eta, direction)
         print('time used: %24.2f <-- get_morb_berry_kmesh' % (datetime.now() - start).total_seconds())
         return morb
 
-    def get_ahc_kmesh_fermi(self, kmesh, ef_min, ef_max, n_ef, eta=1e-4, lnew=False):
+    def get_ahc_kmesh_fermi(self, kmesh, ef_min, ef_max, n_ef, eta=1e-4):
         start = datetime.now()
         print('---------- start get_ahc_kmesh_fermi ----------')
         kpts = kp.get_kpts_mesh(kmesh)
@@ -288,11 +289,25 @@ class TBSystem:
         efs = np.linspace(ef_min, ef_max, n_ef+1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
         ahc_efs = get_ahc_kpar_fermi(self.ham_R, self.r_mat_R, self._Rvec, self.R_vec_cart_T,
-                                     self.num_wann, kpts, efs, eta, lnew)
+                                     self.num_wann, kpts, efs, eta)
         output = np.zeros((efs.shape[0], 4), dtype=float)
         output[:, 0] = efs
         output[:, 1:] = ahc_efs / self.area
         print('time used: %24.2f <-- get_ahc_kmesh_fermi' % (datetime.now() - start).total_seconds())
+        return output
+
+    def get_shc_kmesh_fermi(self, kmesh, ef_min, ef_max, n_ef, eta=1e-4, alpha_beta=2, gamma=2):
+        start = datetime.now()
+        print('---------- start get_shc_kmesh_fermi ----------')
+        kpts = kp.get_kpts_mesh(kmesh)
+        print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
+        efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
+        print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
+        shc_efs = get_shc_kpar_fermi(self.ham_R, self.r_mat_R, self._Rvec, self.R_vec_cart_T,
+                                     self.num_wann, kpts, efs, eta, alpha_beta, gamma)
+        shc_efs /= self.area[alpha_beta]
+        output = np.column_stack((efs, shc_efs))
+        print('time used: %24.2f <-- get_shc_kmesh_fermi' % (datetime.now() - start).total_seconds())
         return output
 
     def get_occ_dos_kmesh_fermi(self, kmesh, ef_min, ef_max, n_ef, eta=1e-4, lproj=False):

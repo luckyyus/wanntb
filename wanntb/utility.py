@@ -10,12 +10,7 @@ def get_list_index(item, li):
     return -1
 
 
-@njit
-def fermi(e, kbT):
-    return 1.0 / (np.exp(e/kbT) + 1.0)
-
-
-@njit
+@njit(nogil=True)
 def _surface_GR(energy, n_dim, h0, t, mu=0.0, n_iter=25):
     """
     计算表面格林函数
@@ -44,7 +39,7 @@ def _surface_GR(energy, n_dim, h0, t, mu=0.0, n_iter=25):
     return gR0
 
 
-@njit
+@njit(nogil=True)
 def _matrix_add_by_index(target, xlist, ylist, add):
     nx = xlist.shape[0]
     ny = ylist.shape[0]
@@ -55,7 +50,7 @@ def _matrix_add_by_index(target, xlist, ylist, add):
     pass
 
 
-@njit
+@njit(nogil=True)
 def _get_submatrix_by_index(target, xlist, ylist):
     nx = int(len(xlist))
     ny = int(len(ylist))
@@ -335,7 +330,6 @@ def fourier_R_to_k_curl(vec_R, phase_fac, R_vec_cart_T):
 def get_eig_da(eig, ham_da, uu, num_wann, eig_diff=1e-4):
     eig_da = np.zeros(num_wann, dtype=np.float64)
     ham_bar_da = unitary_trans(ham_da, uu)
-
     i = 0
     while i < num_wann:
         diff = eig[i + 1] - eig[i] if i + 1 < num_wann else 1.0
@@ -425,11 +419,13 @@ def dos_fermi(eig, ef, eta):
     return 1.0 / (np.exp(fac) + 1) / (1 + np.exp(-fac)) / eta
 
 
-def spin_h(gamma, num_wann, uu, new_order=False):
-    if new_order:
-        sw = np.kron(np.eye(num_wann//2, dtype=np.complex128), S_[gamma])
+@njit(nogil=True)
+def spin_w(gamma, num_wann, udud_order=False):
+    n_orbit = num_wann//2
+    if udud_order:
+        sw = np.kron(np.eye(n_orbit, dtype=np.complex128), S_[gamma])
     else:
-        sw = np.kron(S_[gamma], np.eye(num_wann // 2, dtype=np.complex128))
+        sw = np.kron(S_[gamma], np.eye(n_orbit, dtype=np.complex128))
     return sw
 
 
