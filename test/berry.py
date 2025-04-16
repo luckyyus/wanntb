@@ -26,13 +26,13 @@ tb = wanntb.TBSystem(npz_file=npzfile)
 
 
 # AgRuO
-# output = tb.get_morb_berry_kpath(ef, kpath, nkpts_path=200, direction=3, eta=1e-6)
-# np.savetxt(path + '-morb-zgz.txt', output, fmt='%16.8e')
-# output = tb.get_berrycurv_kpath(ef, kpath, nkpts_path=200, eta=1e-6)
-# np.savetxt(path + '-omega-zgz.txt', output, fmt='%16.8e')
-output = tb.get_morb_berry_kpath(ef, kpath, nkpts_path=200, direction=3, eta=1e-6, lnew=True)
-np.savetxt(path + '-morb-zgz-2.txt', output, fmt='%16.8e')
-output = tb.get_berrycurv_kpath(ef, kpath, nkpts_path=200, eta=1e-6, lnew=True)
-np.savetxt(path + '-omega-zgz-2.txt', output, fmt='%16.8e')
+output = tb.get_morb_berry_kpath(ef, kpath, nkpts_path=200, direction=3, eta=1e-6)
+np.savetxt(path + '-morb-zgz.txt', output, fmt='%16.8e')
+output = tb.get_berrycurv_kpath(ef, kpath, nkpts_path=200, eta=1e-6)
+np.savetxt(path + '-omega-zgz.txt', output, fmt='%16.8e')
+# output = tb.get_morb_berry_kpath(ef, kpath, nkpts_path=200, direction=3, eta=1e-6, lnew=True)
+# np.savetxt(path + '-morb-zgz-2.txt', output, fmt='%16.8e')
+# output = tb.get_berrycurv_kpath(ef, kpath, nkpts_path=200, eta=1e-6, lnew=True)
+# np.savetxt(path + '-omega-zgz-2.txt', output, fmt='%16.8e')
 
 # np.savetxt(path + '-occ-k%d.txt' % kmesh, output, fmt='%16.6f')

@@ -1,5 +1,6 @@
 import numpy as np
 from datetime import datetime
+from . import kpoints as kp
 from . import utility as ut
 from .constant import Cart, TwoPi, Hbar_
 from ._dos import get_occ_dos_kpar, get_occ_dos_proj_kpar
@@ -128,7 +129,7 @@ class TBSystem:
     def output_bands_kpath(self, kpath, nkpts_path=100, filename='bands-debug.txt', spin=True):
         start = datetime.now()
         print('---------- start plot_bands_kpath ----------')
-        kpts, kpts_len = ut.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
+        kpts, kpts_len = kp.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
         nkpts = kpts.shape[0]
         print('total number of k-points: %d' % nkpts)
         eigs = ut.get_eig_for_kpts_kpar(self.ham_R, self._Rvec, self.R_vec_cart_T, self.num_wann, kpts)
@@ -142,7 +143,7 @@ class TBSystem:
     def get_eig_for_kpts_around(self, kmesh, center, distance_cart):
         start = datetime.now()
         print('---------- start get_eig_for_kpts_around ----------')
-        kpts = ut.get_kpts_mesh_around(kmesh, center, distance_cart, self.recip_lattice)
+        kpts = kp.get_kpts_mesh_around(kmesh, center, distance_cart, self.recip_lattice)
         nk = kpts.shape[0]
         print('total number of kpoints for fitting: %d ' % nk)
         eigs = ut.get_eig_for_kpts_kpar(self.ham_R, self._Rvec, self.R_vec_cart_T, self.num_wann, kpts)
@@ -153,7 +154,7 @@ class TBSystem:
         start = datetime.now()
         print('---------- start get_alpha_beta ----------')
         print('relaxation time %e ps' % (Hbar_ / eta))
-        kpts = ut.get_kpts_mesh(kmesh)
+        kpts = kp.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         # get the q vector in fraction coordinate
         q_frac = q * Cart[direction-1, :] @ self.real_lattice / TwoPi
@@ -164,7 +165,7 @@ class TBSystem:
             _adpt_mesh = np.array(adpt_mesh, dtype=np.int32)
             _dk = 1.0 / np.array(kmesh)
             print('_dk in fraction units: %s' % _dk)
-            adpt_kpts = ut.get_adpt_kpts(_dk, _adpt_mesh)
+            adpt_kpts = kp.get_adpt_kpts(_dk, _adpt_mesh)
             # print('adpt_kpts:')
             # print(adpt_kpts)
         else:
@@ -184,7 +185,7 @@ class TBSystem:
         start = datetime.now()
         print('---------- start get_alpha_beta_fermi ----------')
         print('relaxation time %e ps' % (Hbar_ / eta))
-        kpts = ut.get_kpts_mesh(kmesh)
+        kpts = kp.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         mus = np.linspace(-mu_d, mu_d, n_ef+1, endpoint=True, dtype=float)
         efs = mus + ef0
@@ -200,7 +201,7 @@ class TBSystem:
             _adpt_mesh = np.array(adpt_mesh, dtype=np.int32)
             _dk = 1.0 / np.array(kmesh)
             print('_dk in fraction units: %s' % _dk)
-            adpt_kpts = ut.get_adpt_kpts(_dk, _adpt_mesh)
+            adpt_kpts = kp.get_adpt_kpts(_dk, _adpt_mesh)
             # print('adpt_kpts:')
             # print(adpt_kpts)
         else:
@@ -221,7 +222,7 @@ class TBSystem:
         start = datetime.now()
         print('---------- start get_alpha_beta_kpath ----------')
         print('relaxation time %e ps' % (Hbar_ / eta))
-        kpts, kpts_len = ut.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
+        kpts, kpts_len = kp.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
         nkpts = kpts.shape[0]
         print('total number of k-points: %d' % nkpts)
         q_frac = q * np.dot(Cart[direction - 1, :], self.real_lattice) / TwoPi
@@ -238,7 +239,7 @@ class TBSystem:
     def get_carrier(self, kmesh, ef, eta=1e-3, q=1e-5, direction=1):
         start = datetime.now()
         print('---------- start get_carrier ----------')
-        kpts = ut.get_kpts_mesh(kmesh)
+        kpts = kp.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         q_frac = q * Cart[direction-1, :] @ self.real_lattice / TwoPi
         sum_o = ut.get_carrier_kpar(self.ham_R, self.R_vec, self.R_vec_cart_T,
@@ -248,19 +249,19 @@ class TBSystem:
 
     def get_berrycurv_kpath(self, ef, kpath, nkpts_path=100, eta=1e-4, lnew=False):
         start = datetime.now()
-        print('---------- start get_berry_curv_kpath ----------')
-        kpts, kpts_len = ut.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
+        print('---------- start get_berrycurv_kpath ----------')
+        kpts, kpts_len = kp.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         omega = get_berrycurv_kpar_kpath(self.ham_R, self.r_mat_R, self._Rvec, self.R_vec_cart_T,
                                          self.num_wann, kpts, ef, eta, lnew)
         list_o_k = np.column_stack((kpts_len, omega))
-        print('time used: %24.2f <-- get_berry_curv_kpath' % (datetime.now() - start).total_seconds())
+        print('time used: %24.2f <-- get_berrycurv_kpath' % (datetime.now() - start).total_seconds())
         return list_o_k
 
     def get_morb_berry_kpath(self, ef, kpath, nkpts_path=100, direction=1, eta=1e-4, lnew=False):
         start = datetime.now()
         print('---------- start get_morb_berry_kpath ----------')
-        kpts, kpts_len = ut.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
+        kpts, kpts_len = kp.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         morb = get_morb_berry_kpar_kpath(self.ham_R, self.r_mat_R, self._Rvec, self.R_vec_cart_T,
                                          self.num_wann, kpts, ef, eta, direction, lnew)
@@ -271,7 +272,7 @@ class TBSystem:
     def get_morb_berry_kmesh(self, ef, kmesh, direction=1, eta=1e-4, lnew=False):
         start = datetime.now()
         print('---------- start get_morb_berry_kmesh ----------')
-        kpts = ut.get_kpts_mesh(kmesh)
+        kpts = kp.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         print('E-fermi: %8.4f' % ef)
         morb = get_morb_berry_kpar(self.ham_R, self.r_mat_R, self._Rvec, self.R_vec_cart_T,
@@ -282,7 +283,7 @@ class TBSystem:
     def get_ahc_kmesh_fermi(self, kmesh, ef_min, ef_max, n_ef, eta=1e-4, lnew=False):
         start = datetime.now()
         print('---------- start get_ahc_kmesh_fermi ----------')
-        kpts = ut.get_kpts_mesh(kmesh)
+        kpts = kp.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         efs = np.linspace(ef_min, ef_max, n_ef+1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
@@ -297,7 +298,7 @@ class TBSystem:
     def get_occ_dos_kmesh_fermi(self, kmesh, ef_min, ef_max, n_ef, eta=1e-4, lproj=False):
         start = datetime.now()
         print('---------- start get_occ_dos_kmesh_fermi ----------')
-        kpts = ut.get_kpts_mesh(kmesh)
+        kpts = kp.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         efs = np.linspace(ef_min, ef_max, n_ef+1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))

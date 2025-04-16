@@ -1,6 +1,6 @@
 import numpy as np
 from numba import njit, prange
-from .constant import TwoPi, Eta_4
+from .constant import TwoPi, Eta_4, S_
 
 
 def get_list_index(item, li):
@@ -184,9 +184,13 @@ def hermiization_R(mat, R_vec):
                 break
     return _mat
 
-@njit
-def unitary_trans(mat, uu):
-    return uu.conj().T @ mat @ uu
+
+@njit(nogil=True)
+def unitary_trans(mat, uu, inverse=False):
+    if inverse:
+        return uu @ mat @ uu.conj().T
+    else:
+        return uu.conj().T @ mat @ uu
 
 
 def read_tb_file(tb_file='wannier90_tb.dat'):
@@ -305,12 +309,27 @@ def fourier_R_to_k_vec3(vec_R, phase_fac):
     for k in range(3):
         for i in range(num_wann):
             for j in range(num_wann):
-                vec_mat_Rkij = np.ascontiguousarray(vec_R[:, k, i, j])
-                # oo_true[k, i, j] = phase_fac @ vec_mat_Rkij
-                oo_true[k, i, j] = np.sum(phase_fac * vec_mat_Rkij)
-            # oo_true[:, i, j] = np.dot(vec_mat_Rkij, phase_fac)
+                vec_Rkij = np.ascontiguousarray(vec_R[:, k, i, j])
+                oo_true[k, i, :] = np.sum(vec_Rkij * phase_fac)
     return oo_true
 
+
+@njit(nogil=True)
+def fourier_R_to_k_curl(vec_R, phase_fac, R_vec_cart_T):
+    n_rpt, _, num_wann, _ = vec_R.shape
+    oo_curl = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
+    for i in range(num_wann):
+        for j in range(num_wann):
+            vec_ij_0 = np.ascontiguousarray(vec_R[:, 0, i, j])
+            vec_ij_1 = np.ascontiguousarray(vec_R[:, 1, i, j])
+            vec_ij_2 = np.ascontiguousarray(vec_R[:, 2, i, j])
+            oo_curl[0, i, j] = np.sum((R_vec_cart_T[1] * vec_ij_2
+                                       - R_vec_cart_T[2] * vec_ij_1) * phase_fac) * 1j
+            oo_curl[1, i, j] = np.sum((R_vec_cart_T[2] * vec_ij_0
+                                       - R_vec_cart_T[0] * vec_ij_2) * phase_fac) * 1j
+            oo_curl[2, i, j] = np.sum((R_vec_cart_T[0] * vec_ij_1
+                                       - R_vec_cart_T[1] * vec_ij_0) * phase_fac) * 1j
+    return oo_curl
 
 @njit(nogil=True)
 def get_eig_da(eig, ham_da, uu, num_wann, eig_diff=1e-4):
@@ -406,6 +425,14 @@ def dos_fermi(eig, ef, eta):
     return 1.0 / (np.exp(fac) + 1) / (1 + np.exp(-fac)) / eta
 
 
+def spin_h(gamma, num_wann, uu, new_order=False):
+    if new_order:
+        sw = np.kron(np.eye(num_wann//2, dtype=np.complex128), S_[gamma])
+    else:
+        sw = np.kron(S_[gamma], np.eye(num_wann // 2, dtype=np.complex128))
+    return sw
+
+
 # @njit(parallel=True)
 # def sz_n(uu, num_wann: int):
 #     """
@@ -445,59 +472,5 @@ def get_carrier_kpar(ham_R, R_vec, R_vec_cart_T,
     return np.sum(list_o_k) / (nkpts * TwoPi * TwoPi)
 
 
-def get_kpts_mesh(kmesh):
-    k1, k2, k3 = np.meshgrid(np.arange(kmesh[0], dtype=float)/kmesh[0],
-                             np.arange(kmesh[1], dtype=float)/kmesh[1],
-                             np.arange(kmesh[2], dtype=float)/kmesh[2], indexing='ij')
-    return np.column_stack((k1.ravel(), k2.ravel(), k3.ravel()))
 
-
-def get_kpts_mesh_around(kmesh, center, distance_cart, recip_lattice):
-    k1, k2, k3 = np.meshgrid(np.arange(kmesh[0], dtype=float) / kmesh[0],
-                             np.arange(kmesh[1], dtype=float) / kmesh[1],
-                             np.arange(kmesh[2], dtype=float) / kmesh[2], indexing='ij')
-    kpts0 = np.column_stack((k1.ravel(), k2.ravel(), k3.ravel()))
-    nk = kpts0.shape[0]
-    kpts = []
-    for ik in range(nk):
-        kpt = kpts0[ik] - np.array([0.5, 0.5, 0.5]) + center
-        dk_cart = (kpt - center) @ recip_lattice
-        r_cart = dk_cart / distance_cart
-        if r_cart.dot(r_cart) < 1:
-            kpts.append(kpt)
-    return np.array(kpts)
-
-
-def get_kpts_path(kpath, nkpts_path, recip_lattice):
-    npath = len(kpath) - 1
-    kbegin = 0.0
-    kpts = []
-    kpts_len = []
-    for ip in range(npath):
-        kdelta = (kpath[ip+1] - kpath[ip]) @ recip_lattice
-        klen = np.sqrt(np.dot(kdelta, kdelta))
-        for il in range(nkpts_path + 1):
-            kpt = ((nkpts_path - il)* kpath[ip] + il * kpath[ip+1]) / nkpts_path
-            kpt_len = klen * il / nkpts_path
-            kpts.append(kpt)
-            kpts_len.append(kpt_len + kbegin)
-        kbegin += klen
-    return np.array(kpts, dtype=float), np.array(kpts_len, dtype=float)
-
-
-def get_adpt_kpts(dk, adpt_mesh):
-    # print(dk.shape, dk.dtype)
-    # print(adpt_mesh.shape, adpt_mesh.dtype)
-    offset = 0.5 - (adpt_mesh + 1) % 2 / 2 / adpt_mesh
-    # print(offset)
-    kk1 = np.arange(adpt_mesh[0], dtype=float) / adpt_mesh[0] - offset[0] if adpt_mesh[0] > 1 else np.array([0.0])
-    kk2 = np.arange(adpt_mesh[1], dtype=float) / adpt_mesh[1] - offset[1] if adpt_mesh[1] > 1 else np.array([0.0])
-    kk3 = np.arange(adpt_mesh[2], dtype=float) / adpt_mesh[2] - offset[2] if adpt_mesh[2] > 1 else np.array([0.0])
-    # print(kk1)
-    # print(kk2)
-    # print(kk3)
-    k1, k2, k3 = np.meshgrid(kk1, kk2, kk3, indexing='ij')
-
-    kpts = np.column_stack((k1.ravel(), k2.ravel(), k3.ravel())) * dk
-    return kpts
 
