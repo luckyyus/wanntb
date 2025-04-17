@@ -63,7 +63,7 @@ def _get_Ah_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt):
 
 
 @njit(nogil=True)
-def _get_eAh_jsd_inv2_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, eta, alpha_beta, sw):
+def _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, eta, alpha_beta, sw):
     fac = fourier_phase_R_to_k(R_vec, kpt)
     ham_out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[1, 2, 3])
     # A_bar^W_a[3, num_wann, num_wann] in units angst.
@@ -74,23 +74,21 @@ def _get_eAh_jsd_inv2_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, 
     inv2 = np.zeros((num_wann, num_wann), dtype=np.float64)
     for m_ in range(num_wann):
         for n_ in range(num_wann):
-            if m_ == n_:
-                continue
-            e_d[m_, n_] = eig[m_] - eig[n_]
-            inv_e_d[m_, n_] = - 1.0 / e_d[m_, n_] if abs(e_d[m_, n_]) > 1e-8 else 0.0
-            inv2[n_, m_] = 1.0 / (e_d[m_, n_] * e_d[m_, n_] + eta * eta)
+            if m_ != n_:
+                e_d[m_, n_] = eig[m_] - eig[n_]
+                inv_e_d[m_, n_] = - 1.0 / e_d[m_, n_] if abs(e_d[m_, n_]) > 1e-8 else 0.0
+                inv2[n_, m_] = 1.0 / (e_d[m_, n_] * e_d[m_, n_] + eta * eta)
     ham_a = unitary_trans(ham_out[I_A[alpha_beta] + 1], uu)
     Dh_a = ham_a * inv_e_d
     # eAh_a = 1j * e_d * unitary_trans(A_bar_k[I_A[alpha_beta]], uu) + unitary_trans(ham_out[I_A[alpha_beta] + 1], uu)
-    eAh_b = 1j *e_d * unitary_trans(A_bar_k[I_B[alpha_beta]], uu) + unitary_trans(ham_out[I_B[alpha_beta] + 1], uu)
+    vh_b = 1j *e_d * unitary_trans(A_bar_k[I_B[alpha_beta]], uu) + unitary_trans(ham_out[I_B[alpha_beta] + 1], uu)
     eig_da = get_eig_da(eig, ham_out[I_A[alpha_beta+1]], uu, num_wann)
     mat_S = unitary_trans(sw, uu)
     mat_K = mat_S @ Dh_a - 1j * unitary_trans(sw @ A_bar_k[I_A[alpha_beta]], uu)
     mat_L = unitary_trans(sw @ ham_out[0], uu) @ Dh_a - 1j * unitary_trans(sw @ ham_out[0] @ A_bar_k[I_A[alpha_beta]], uu)
     mat_B = mat_S * eig_da + mat_K * eig - mat_L
-    # mat_B = mat_S @ (eAh_a + eig_da)
-    jsd_gamma = (mat_B + mat_B.T.conj())
-    return eAh_b, jsd_gamma, inv2, eig
+    jsd_gamma = mat_B + mat_B.T.conj()
+    return vh_b, jsd_gamma, inv2, eig
 
 
 @njit(nogil=True)
@@ -148,11 +146,11 @@ def _get_f_omega(Ah_k, f, num_wann):
 
 
 @njit(nogil=True)
-def _get_f_omega_s(Ah_b, js2, inv2, f, num_wann):
+def _get_f_omega_s(vh_b, js2, inv2, f, num_wann):
     fo_k = np.zeros(num_wann, dtype=np.float64)
     g = 1.0 - f
     for n_ in range(num_wann):
-        fo_k[n_] = np.sum((js2[n_, :] * g * Ah_b[:, n_] * inv2[n_, :]).imag)
+        fo_k[n_] = np.sum((g * js2[n_, :] * vh_b[:, n_] * inv2[n_, :]).imag)
     fo_k *= -1.0 * f
     return fo_k
 
@@ -215,13 +213,13 @@ def _get_berrycurv_f_efs_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, e
 @njit(nogil=True)
 def _get_shc_f_efs_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, efs, eta, alpha_beta, sw):
     n_ef = efs.shape[0]
-    Ah_b, jsd, inv2, eig = _get_eAh_jsd_inv2_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt,
-                                                   eta, alpha_beta, sw)
+    v_b, jsd, inv2, eig = _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt,
+                                                  eta, alpha_beta, sw)
     ofg_k = np.zeros((n_ef, num_wann), dtype=np.float64)
     for i in range(n_ef):
         ef = efs[i]
         f = occ_fermi(eig, ef, eta)
-        ofg_k[i, :] = _get_f_omega_s(Ah_b, jsd, inv2, f, num_wann)
+        ofg_k[i, :] = _get_f_omega_s(v_b, jsd, inv2, f, num_wann)
     return np.sum(ofg_k, axis=1)
 
 

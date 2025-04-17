@@ -29,8 +29,8 @@ tb = wanntb.TBSystem(npz_file=npzfile)
 # np.savetxt(path + '-ahc-k%d-2.txt' % kmesh, output, fmt='%16.6f')
 
 # bilayer MnSe
-kmesh =192
-output = tb.get_shc_kmesh_fermi((kmesh, kmesh, 1), -2.600, -2.100, 250, alpha_beta=2, gamma=2, eta=1e-3)
+kmesh = 192
+output = tb.get_shc_kmesh_fermi((kmesh, kmesh, 1), -2.600, -2.100, 500, alpha_beta=2, gamma=2, eta=1e-3)
 np.savetxt(path + '-shc-k%d.txt' % kmesh, output, fmt='%16.6f')
 
 # AgRuO
