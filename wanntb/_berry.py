@@ -78,15 +78,15 @@ def _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, e
                 e_d[m_, n_] = eig[m_] - eig[n_]
                 inv_e_d[m_, n_] = - 1.0 / e_d[m_, n_] if abs(e_d[m_, n_]) > 1e-8 else 0.0
                 inv2[n_, m_] = 1.0 / (e_d[m_, n_] * e_d[m_, n_] + eta * eta)
-    ham_a = unitary_trans(ham_out[I_A[alpha_beta] + 1], uu)
-    Dh_a = ham_a * inv_e_d
-    # eAh_a = 1j * e_d * unitary_trans(A_bar_k[I_A[alpha_beta]], uu) + unitary_trans(ham_out[I_A[alpha_beta] + 1], uu)
+    # ham_a = unitary_trans(ham_out[I_A[alpha_beta] + 1], uu)
+    # Dh_a = ham_a * inv_e_d
+    vh_a = 1j * e_d * unitary_trans(A_bar_k[I_A[alpha_beta]], uu) + unitary_trans(ham_out[I_A[alpha_beta] + 1], uu)
     vh_b = 1j *e_d * unitary_trans(A_bar_k[I_B[alpha_beta]], uu) + unitary_trans(ham_out[I_B[alpha_beta] + 1], uu)
-    eig_da = get_eig_da(eig, ham_out[I_A[alpha_beta+1]], uu, num_wann)
     mat_S = unitary_trans(sw, uu)
-    mat_K = mat_S @ Dh_a - 1j * unitary_trans(sw @ A_bar_k[I_A[alpha_beta]], uu)
-    mat_L = unitary_trans(sw @ ham_out[0], uu) @ Dh_a - 1j * unitary_trans(sw @ ham_out[0] @ A_bar_k[I_A[alpha_beta]], uu)
-    mat_B = mat_S * eig_da + mat_K * eig - mat_L
+    # mat_K = mat_S @ Dh_a - 1j * unitary_trans(sw @ A_bar_k[I_A[alpha_beta]], uu)
+    # mat_L = unitary_trans(sw @ ham_out[0], uu) @ Dh_a - 1j * unitary_trans(sw @ ham_out[0] @ A_bar_k[I_A[alpha_beta]], uu)
+    # mat_B = mat_S * eig_da + mat_K * eig - mat_L
+    mat_B = mat_S @ vh_a
     jsd_gamma = mat_B + mat_B.T.conj()
     return vh_b, jsd_gamma, inv2, eig
 
@@ -151,7 +151,7 @@ def _get_f_omega_s(vh_b, js2, inv2, f, num_wann):
     g = 1.0 - f
     for n_ in range(num_wann):
         fo_k[n_] = np.sum((g * js2[n_, :] * vh_b[:, n_] * inv2[n_, :]).imag)
-    fo_k *= -1.0 * f
+    fo_k *= -2.0 * f
     return fo_k
 
 @njit(nogil=True)
