@@ -2,8 +2,7 @@ import numpy as np
 from numba import njit, prange
 from .constant import TwoPi, Hbar_, Mu_B_
 from .utility import fourier_phase_R_to_k, fourier_R_to_k, fourier_R_to_k_vec3, unitary_trans, occ_fermi, \
-    fourier_R_to_k_curl, spin_w, get_eig_da
-
+    fourier_R_to_k_curl, spin_w, get_eig_da, unitary_trans_sub
 
 I_A = np.array([1, 2, 0], dtype=np.int32)
 I_B = np.array([2, 0, 1], dtype=np.int32)
@@ -63,7 +62,7 @@ def _get_Ah_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt):
 
 
 @njit(nogil=True)
-def _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, eta, alpha_beta, sw):
+def _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, eta, alpha_beta, sw, subwf=None):
     fac = fourier_phase_R_to_k(R_vec, kpt)
     ham_out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[1, 2, 3])
     # A_bar^W_a[3, num_wann, num_wann] in units angst.
@@ -82,7 +81,7 @@ def _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, e
     # Dh_a = ham_a * inv_e_d
     vh_a = 1j * e_d * unitary_trans(A_bar_k[I_A[alpha_beta]], uu) + unitary_trans(ham_out[I_A[alpha_beta] + 1], uu)
     vh_b = 1j *e_d * unitary_trans(A_bar_k[I_B[alpha_beta]], uu) + unitary_trans(ham_out[I_B[alpha_beta] + 1], uu)
-    mat_S = unitary_trans(sw, uu)
+    mat_S = unitary_trans(sw, uu) if subwf is None else unitary_trans_sub(sw[subwf, :], uu[subwf, :], uu)
     # mat_K = mat_S @ Dh_a - 1j * unitary_trans(sw @ A_bar_k[I_A[alpha_beta]], uu)
     # mat_L = unitary_trans(sw @ ham_out[0], uu) @ Dh_a - 1j * unitary_trans(sw @ ham_out[0] @ A_bar_k[I_A[alpha_beta]], uu)
     # mat_B = mat_S * eig_da + mat_K * eig - mat_L
@@ -211,10 +210,10 @@ def _get_berrycurv_f_efs_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, e
 
 
 @njit(nogil=True)
-def _get_shc_f_efs_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, efs, eta, alpha_beta, sw):
+def _get_shc_f_efs_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, efs, eta, alpha_beta, sw, subwf=None):
     n_ef = efs.shape[0]
     v_b, jsd, inv2, eig = _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt,
-                                                  eta, alpha_beta, sw)
+                                                  eta, alpha_beta, sw, subwf=subwf)
     ofg_k = np.zeros((n_ef, num_wann), dtype=np.float64)
     for i in range(n_ef):
         ef = efs[i]
@@ -283,16 +282,16 @@ def get_ahc_kpar_fermi(ham_R, r_mat_R, R_vec, R_vec_cart_T,
 
 
 def get_shc_kpar_fermi(ham_R, r_mat_R, R_vec, R_vec_cart_T,
-                       num_wann, kpts, efs, eta, alpha_beta, gamma):
+                       num_wann, kpts, efs, eta, alpha_beta, gamma, udud_order, subwf):
     fac = - TwoPi
     nkpts = kpts.shape[0]
     n_ef = efs.shape[0]
-    sw = spin_w(gamma, num_wann)
+    sw = spin_w(gamma, num_wann, udud_order)
     list_o_ef_k = np.zeros((n_ef, nkpts), dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
         list_o_ef_k[:, ik] = _get_shc_f_efs_k(ham_R, r_mat_R, R_vec, R_vec_cart_T,
-                                              num_wann, kpt, efs, eta, alpha_beta, sw)
+                                              num_wann, kpt, efs, eta, alpha_beta, sw, subwf=subwf)
     return np.sum(list_o_ef_k, axis=1) / nkpts * fac
 
 

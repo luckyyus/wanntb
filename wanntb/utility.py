@@ -187,6 +187,10 @@ def unitary_trans(mat, uu, inverse=False):
     else:
         return uu.conj().T @ mat @ uu
 
+@njit(nogil=True)
+def unitary_trans_sub(mat, uu1, uu2):
+    return uu1.conj().T @ mat @ uu2
+
 
 def read_tb_file(tb_file='wannier90_tb.dat'):
     seedname = tb_file.split('/')[-1].split('_')[0]

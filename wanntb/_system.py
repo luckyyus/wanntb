@@ -296,7 +296,8 @@ class TBSystem:
         print('time used: %24.2f <-- get_ahc_kmesh_fermi' % (datetime.now() - start).total_seconds())
         return output
 
-    def get_shc_kmesh_fermi(self, kmesh, ef_min, ef_max, n_ef, eta=1e-4, alpha_beta=2, gamma=2):
+    def get_shc_kmesh_fermi(self, kmesh, ef_min, ef_max, n_ef, eta=1e-4,
+                            alpha_beta=2, gamma=2, udud_order=False, subwf=None):
         start = datetime.now()
         print('---------- start get_shc_kmesh_fermi ----------')
         kpts = kp.get_kpts_mesh(kmesh)
@@ -304,7 +305,7 @@ class TBSystem:
         efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
         shc_efs = get_shc_kpar_fermi(self.ham_R, self.r_mat_R, self._Rvec, self.R_vec_cart_T,
-                                     self.num_wann, kpts, efs, eta, alpha_beta, gamma)
+                                     self.num_wann, kpts, efs, eta, alpha_beta, gamma, udud_order, subwf)
         shc_efs /= self.area[alpha_beta]
         output = np.column_stack((efs, shc_efs))
         print('time used: %24.2f <-- get_shc_kmesh_fermi' % (datetime.now() - start).total_seconds())

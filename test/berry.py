@@ -30,8 +30,11 @@ tb = wanntb.TBSystem(npz_file=npzfile)
 
 # bilayer MnSe
 kmesh = 192
-output = tb.get_shc_kmesh_fermi((kmesh, kmesh, 1), -2.600, -2.100, 500, alpha_beta=2, gamma=2, eta=1e-3)
-np.savetxt(path + '-shc-k%d.txt' % kmesh, output, fmt='%16.6f')
+# subwf = np.array([1,2,3,4,5,11,12,13,17,18,19,20,21,27,28,29], dtype=int)
+subwf = np.array([6,7,8,9,10,14,15,16,22,23,24,25,26,30,31,32], dtype=int)
+output = tb.get_shc_kmesh_fermi((kmesh, kmesh, 1), -2.600, -2.100, 500,
+                                alpha_beta=2, gamma=2, eta=1e-3, subwf=subwf)
+np.savetxt(path + '-shc-k%d-2.txt' % kmesh, output, fmt='%16.6f')
 
 # AgRuO
 # output = tb.get_morb_berry_kpath(ef, kpath, nkpts_path=200, direction=3, eta=1e-6)
