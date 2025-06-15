@@ -5,7 +5,7 @@ from . import utility as ut
 from .constant import Cart, TwoPi, Hbar_
 from ._dos import get_occ_dos_kpar, get_occ_dos_proj_kpar
 from ._berry import get_ahc_kpar_fermi, get_morb_berry_kpar_kpath, get_morb_berry_kpar, \
-                     get_berrycurv_kpar_kpath, get_shc_kpar_fermi
+                     get_berrycurv_kpar_kpath, get_shc_kpar_fermi, get_totmorb_kpar_kpath
 from ._alpha_beta import get_alpha_beta_kpar, get_alpha_beta_kpar_kpath, get_alpha_beta_efs_kpar
 # spec = [
 #     ('seedname', numba.core.string),
@@ -332,3 +332,17 @@ class TBSystem:
             out_dos = np.column_stack((efs, dos_efs))
         print('time used: %24.2f <-- get_occ_dos_kmesh_fermi' % (datetime.now() - start).total_seconds())
         return out_occ, out_dos
+
+    def get_totmorb_kpath(self, ef, kpath, nkpts_path=100, alpha_beta=2, eta=1e-4, q=1e-6):
+        start = datetime.now()
+        print('---------- start get_totmorb_kpath ----------')
+        kpts, kpts_len = kp.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
+        print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
+        q_frac = q * self.real_lattice / TwoPi
+        print('q in fraction units:')
+        print(q_frac)
+        morb = get_totmorb_kpar_kpath(self.ham_R, self.r_mat_R, self._Rvec, self.R_vec_cart_T,
+                                         self.num_wann, kpts, q_frac, q, ef, eta, alpha_beta)
+        list_o_k = np.column_stack((kpts_len, morb))
+        print('time used: %24.2f <-- get_totmorb_kpath' % (datetime.now() - start).total_seconds())
+        return list_o_k
