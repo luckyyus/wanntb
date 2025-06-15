@@ -340,7 +340,7 @@ def _get_morb1_morb2_k(eig, num_wann, ef, duu, fo_k, f, alpha_beta):
     # f.(ef - eig).Omega
     morb2 = fo_k[alpha_beta] * (ef - eig)
     # -0.5.f.eig.Omega
-    morb1_2 = fo_k[alpha_beta] * -0.5 * eig
+    morb1_2 = fo_k[alpha_beta] * 0.5 * eig
     # f.<duu_n_a|H|duu_n_b> = f.<duu_n_a|uu_m>e_n<uu_m|duu_n_b>
     morb1_1 = np.zeros(num_wann, dtype=np.float64)
     for n_ in range(num_wann):
@@ -360,7 +360,7 @@ def get_totmorb_kpar_kpath(ham_R, r_mat_R, R_vec, R_vec_cart_T,
         kpt = kpts[ik]
         Ah_k, eig, uu = _get_Ah_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt)
         # ham_k, eig, uu = _ham_k_system(ham_R, R_vec, R_vec_cart_T, kpt)
-        duu = get_deltaU(ham_R, R_vec, R_vec_cart_T, num_wann, kpt, q_frac, q, order=4)
+        duu = get_deltaU(ham_R, R_vec, R_vec_cart_T, num_wann, kpt, q_frac, q, order=2)
         # duu in bloch basis
         for i in range(3):
             duu[i] = uu.conj().T @ duu[i]
