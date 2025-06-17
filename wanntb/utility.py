@@ -232,7 +232,7 @@ def read_tb_file(tb_file='wannier90_tb.dat'):
         r_mat_R = np.zeros((n_Rpts, 3, num_wann, num_wann), dtype=np.complex128)
         for ir in range(n_Rpts):
             f.readline()
-            assert (np.array(f.readline().split(), dtype=np.int32) == R_vec[ir]).all()
+            assert (np.array(f.readline().split(), dtype=np.int16) == R_vec[ir]).all()
             aa = np.array([[f.readline().split()[2:8]
                             for n in range(num_wann)]
                            for m in range(num_wann)], dtype=np.float64)
@@ -253,6 +253,32 @@ def read_tb_file(tb_file='wannier90_tb.dat'):
             'R_vec': R_vec,
             'n_degen': n_degen,
             'r_mat_R': r_mat_R}
+
+
+def read_spin_file(R_vec, n_Rpts, num_wann, ss_file='wannier90_SS_R.dat'):
+    ss_R = np.zeros((n_Rpts, 3, num_wann, num_wann), dtype=np.complex128)
+    with open(ss_file, 'r') as f:
+        line = f.readline()
+        print("reading spin file %s ( %s )" % (ss_file, line.strip()))
+        assert int(f.readline()) == num_wann
+        assert int(f.readline()) == n_Rpts
+        ndegen = []
+        while len(ndegen) < n_Rpts:
+            ndegen += f.readline().split()
+        n_degen = np.array(ndegen, dtype=np.uint8)
+
+        for ir in range(n_Rpts):
+            f.readline()
+            assert (np.array(f.readline().split(), dtype=np.int32) == R_vec[ir]).all()
+            aa = np.array([[f.readline().split()[2:8]
+                            for n in range(num_wann)]
+                           for m in range(num_wann)], dtype=np.float64)
+            ss_R[ir, :, :, :] = (aa[:,:,0::2] + 1j*aa[:,:,1::2]).transpose((2,1,0))
+        print('ss_R: %s %s' % (ss_R.dtype, list(ss_R.shape)))
+    for ir in range(n_Rpts):
+        ss_R[ir] /= n_degen[ir]
+    _ss_R = hermiization_R(ss_R, R_vec)
+    return _ss_R
 
 
 @njit(nogil=True)

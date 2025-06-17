@@ -7,6 +7,8 @@ from ._dos import get_occ_dos_kpar, get_occ_dos_proj_kpar
 from ._berry import get_ahc_kpar_fermi, get_morb_berry_kpar_kpath, get_morb_berry_kpar, \
                      get_berrycurv_kpar_kpath, get_shc_kpar_fermi, get_totmorb_kpar_kpath
 from ._alpha_beta import get_alpha_beta_kpar, get_alpha_beta_kpar_kpath, get_alpha_beta_efs_kpar
+
+
 # spec = [
 #     ('seedname', numba.core.string),
 #     ('num_wann', int32),
@@ -25,6 +27,7 @@ class TBSystem:
         if npz_file is None:
             data = ut.read_tb_file(tb_file=tb_file)
             self.seedname = data['seedname']
+            self.num_wann = data['num_wann']
             self.real_lattice = data['real_lattice']
             self.recip_lattice = data['recip_lattice']
             _ham_R = data['ham_R']
@@ -37,6 +40,7 @@ class TBSystem:
                 _r_mat_R[ir] /= self.n_degen[ir]
             self.ham_R = ut.hermiization_R(_ham_R, self.R_vec)
             self.r_mat_R = ut.hermiization_R(_r_mat_R, self.R_vec)
+            self.ss_R = None
         else:
             print("reading npz file %s " % npz_file)
             data = np.load(npz_file)
@@ -55,6 +59,9 @@ class TBSystem:
             print('ham_R: %s %s' % (data['ham_R'].dtype, list(data['ham_R'].shape)))
             print('R_vec: %s %s' % (data['R_vec'].dtype, list(data['R_vec'].shape)))
             print('r_mat_R: %s %s' % (data['r_mat_R'].dtype, list(data['r_mat_R'].shape)))
+            if 'ss_R' in data.files:
+                self.ss_R = data['ss_R']
+                print('ss_R: %s %s' % (data['ss_R'].dtype, list(data['ss_R'].shape)))
             self.num_wann = self.ham_R.shape[1]
             self.n_Rpts = self.R_vec.shape[0]
             self.n_degen = np.ones(self.n_Rpts, dtype=np.uint8)
@@ -79,16 +86,31 @@ class TBSystem:
         print(self.area)
         print('time used: %24.2f <-- initialize TB system' % (datetime.now() - start).total_seconds())
 
+    def load_spins(self, ss_file='wannier90_SS_R.dat'):
+        start = datetime.now()
+        self.ss_R = ut.read_spin_file(self.R_vec,self.n_Rpts, self.num_wann, ss_file=ss_file)
+        print('time used: %24.2f <-- load_spins' % (datetime.now() - start).total_seconds())
+
     def output_npz(self, seedname='packaged'):
         start = datetime.now()
         filename = seedname + '-tb.npz'
-        np.savez(filename,
-                 seedname=seedname,
-                 real_lattice=self.real_lattice,
-                 recip_lattice=self.recip_lattice,
-                 ham_R=self.ham_R,
-                 R_vec=self.R_vec,
-                 r_mat_R=self.r_mat_R)
+        if self.ss_R is None:
+            np.savez(filename,
+                     seedname=seedname,
+                     real_lattice=self.real_lattice,
+                     recip_lattice=self.recip_lattice,
+                     ham_R=self.ham_R,
+                     R_vec=self.R_vec,
+                     r_mat_R=self.r_mat_R)
+        else:
+            np.savez(filename,
+                     seedname=seedname,
+                     real_lattice=self.real_lattice,
+                     recip_lattice=self.recip_lattice,
+                     ham_R=self.ham_R,
+                     R_vec=self.R_vec,
+                     r_mat_R=self.r_mat_R,
+                     ss_R=self.ss_R)
         print(filename, ' is saved.')
         print('time used: %24.2f <-- output_npz' % (datetime.now() - start).total_seconds())
 
