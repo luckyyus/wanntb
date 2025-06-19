@@ -56,12 +56,13 @@ def _get_Ah_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt):
 
 
 @njit(nogil=True)
-def _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, ss_R, R_vec, R_vec_cart_T, num_wann, kpt, eta, alpha_beta, subwf=None):
+def _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, ss_R, R_vec, R_vec_cart_T,
+                           num_wann, kpt, eta, alpha_beta, gamma, subwf=None):
     fac = fourier_phase_R_to_k(R_vec, kpt)
     ham_out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[1, 2, 3])
     # A_bar^W_a[3, num_wann, num_wann] in units angst.
     A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
-    sw = fourier_R_to_k_vec3(ss_R, fac)
+    sw = fourier_R_to_k_vec3(ss_R, fac)[gamma]
     eig, uu = np.linalg.eigh(ham_out[0])
     e_d = np.zeros((num_wann, num_wann), dtype=np.float64)
     inv_e_d = np.zeros((num_wann, num_wann), dtype=np.float64)
@@ -75,7 +76,7 @@ def _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, ss_R, R_vec, R_vec_cart_T, num_wann, 
     # ham_a = unitary_trans(ham_out[I_A[alpha_beta] + 1], uu)
     # Dh_a = ham_a * inv_e_d
     vh_a = 1j * e_d * unitary_trans(A_bar_k[I_A[alpha_beta]], uu) + unitary_trans(ham_out[I_A[alpha_beta] + 1], uu)
-    vh_b = 1j *e_d * unitary_trans(A_bar_k[I_B[alpha_beta]], uu) + unitary_trans(ham_out[I_B[alpha_beta] + 1], uu)
+    vh_b = 1j * e_d * unitary_trans(A_bar_k[I_B[alpha_beta]], uu) + unitary_trans(ham_out[I_B[alpha_beta] + 1], uu)
     mat_S = unitary_trans(sw, uu) if subwf is None else unitary_trans_sub(sw[subwf, :], uu[subwf, :], uu)
     # mat_K = mat_S @ Dh_a - 1j * unitary_trans(sw @ A_bar_k[I_A[alpha_beta]], uu)
     # mat_L = unitary_trans(sw @ ham_out[0], uu) @ Dh_a - 1j * unitary_trans(sw @ ham_out[0] @ A_bar_k[I_A[alpha_beta]], uu)
@@ -201,10 +202,11 @@ def _get_berrycurv_f_efs_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, e
 
 
 @njit(nogil=True)
-def _get_shc_f_efs_k(ham_R, r_mat_R, R_vec, ss_R, R_vec_cart_T, num_wann, kpt, efs, eta, alpha_beta, subwf=None):
+def _get_shc_f_efs_k(ham_R, r_mat_R, R_vec, ss_R, R_vec_cart_T,
+                     num_wann, kpt, efs, eta, alpha_beta, gamma, subwf=None):
     n_ef = efs.shape[0]
     v_b, jsd, inv2, eig = _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, ss_R, R_vec, R_vec_cart_T, num_wann, kpt,
-                                                  eta, alpha_beta, subwf=subwf)
+                                                  eta, alpha_beta, gamma, subwf=subwf)
     ofg_k = np.zeros((n_ef, num_wann), dtype=np.float64)
     for i in range(n_ef):
         ef = efs[i]
@@ -273,17 +275,17 @@ def get_ahc_kpar_fermi(ham_R, r_mat_R, R_vec, R_vec_cart_T,
 
 
 @njit(parallel=True, nogil=True)
-def get_shc_kpar_fermi(ham_R, r_mat_R, R_vec, R_vec_cart_T,
-                       num_wann, kpts, efs, eta, alpha_beta, gamma, udud_order, subwf):
+def get_shc_kpar_fermi(ham_R, r_mat_R, R_vec, ss_R, R_vec_cart_T,
+                       num_wann, kpts, efs, eta, alpha_beta, gamma, subwf):
     fac = - TwoPi
     nkpts = kpts.shape[0]
     n_ef = efs.shape[0]
-    sw = spin_w(gamma, num_wann, udud_order)
+    # sw = spin_w(gamma, num_wann, udud_order)
     list_o_ef_k = np.zeros((n_ef, nkpts), dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
-        list_o_ef_k[:, ik] = _get_shc_f_efs_k(ham_R, r_mat_R, R_vec, R_vec_cart_T,
-                                              num_wann, kpt, efs, eta, alpha_beta, sw, subwf=subwf)
+        list_o_ef_k[:, ik] = _get_shc_f_efs_k(ham_R, r_mat_R, R_vec, ss_R, R_vec_cart_T,
+                                              num_wann, kpt, efs, eta, alpha_beta, gamma, subwf=subwf)
     return np.sum(list_o_ef_k, axis=1) / nkpts * fac
 
 
@@ -345,7 +347,7 @@ def _get_morb1_morb2_k(eig, num_wann, ef, duu, fo_k, f, alpha_beta):
     # f.<duu_n_a|H|duu_n_b> = f.<duu_n_a|uu_m>e_n<uu_m|duu_n_b>
     morb1_1 = np.zeros(num_wann, dtype=np.float64)
     for n_ in range(num_wann):
-        morb1_1[n_] = np.sum((duu[I_A[alpha_beta], :, n_].conj() * g * duu[I_B[alpha_beta], :, n_]).imag * eig)
+        morb1_1[n_] = np.sum((duu[I_A[alpha_beta], :, n_].conj() * duu[I_B[alpha_beta], :, n_]).imag * eig * g)
     morb1 = morb1_2 + morb1_1 * f
     return morb1, morb2
 
