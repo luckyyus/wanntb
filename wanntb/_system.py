@@ -322,6 +322,9 @@ class TBSystem:
                             alpha_beta=2, gamma=2, subwf=None):
         start = datetime.now()
         print('---------- start get_shc_kmesh_fermi ----------')
+        if self.ss_R is None:
+            print('spin data ss_R is missing.')
+            return
         kpts = kp.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)

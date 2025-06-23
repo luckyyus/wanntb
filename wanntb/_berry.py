@@ -7,35 +7,35 @@ from .utility import fourier_phase_R_to_k, fourier_R_to_k, fourier_R_to_k_vec3, 
 I_A = np.array([1, 2, 0], dtype=np.int32)
 I_B = np.array([2, 0, 1], dtype=np.int32)
 
-@njit(nogil=True)
-def get_berry_curvature_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, eta):
-    fac = fourier_phase_R_to_k(R_vec, kpt)
-    ham_out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[1, 2, 3])
-    A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
-    eig, uu = np.linalg.eigh(ham_out[0])
-    e_d = np.zeros((num_wann,num_wann), dtype=np.float64)
-    inv_e_d = np.zeros((num_wann,num_wann), dtype=np.float64)
-    for m_ in range(num_wann):
-        for n_ in range(num_wann):
-            if m_ == n_:
-                continue
-            e_d[m_, n_] = eig[m_] - eig[n_]
-            inv_e_d[m_, n_] = -1.0 / (e_d[m_, n_]*e_d[m_, n_] + eta * eta)
-            # inv_e_d[m_, n_] = 1.0 / (eig[m_] - eig[n_]) if abs(eig[m_] - eig[n_]) > 1e-7 else 0.0
-    Ah_k = np.zeros((3,num_wann,num_wann), dtype=np.complex128)
-    # A_bar^W_a[3, num_wann, num_wann] in units angst.
-
-    for i in range(3):
-        # D^H_a = UU^dag.del_a UU (a=x,y,z) = {H_bar^H_nma / (e_m - e_n)}
-        # A^H_a = A_bar^H_a + i D^H_a = i<psi_m| del_a psi_n>
-        Ah_k[i] = 1j * e_d * unitary_trans(A_bar_k[i], uu) - unitary_trans(ham_out[i+1], uu)
-    omega_k = np.zeros((3, num_wann), dtype=np.float64)
-    for n_ in range(num_wann):
-        omega_k[0, n_] = np.sum((Ah_k[1, n_, :] * Ah_k[2, :, n_] * inv_e_d[n_, :]).imag)
-        omega_k[1, n_] = np.sum((Ah_k[2, n_, :] * Ah_k[0, :, n_] * inv_e_d[n_, :]).imag)
-        omega_k[2, n_] = np.sum((Ah_k[0, n_, :] * Ah_k[1, :, n_] * inv_e_d[n_, :]).imag)
-    omega_k *= -2.0
-    return omega_k, eig
+# @njit(nogil=True)
+# def get_berry_curvature_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, eta):
+#     fac = fourier_phase_R_to_k(R_vec, kpt)
+#     ham_out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[1, 2, 3])
+#     A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
+#     eig, uu = np.linalg.eigh(ham_out[0])
+#     e_d = np.zeros((num_wann,num_wann), dtype=np.float64)
+#     inv_e_d = np.zeros((num_wann,num_wann), dtype=np.float64)
+#     for m_ in range(num_wann):
+#         for n_ in range(num_wann):
+#             if m_ == n_:
+#                 continue
+#             e_d[m_, n_] = eig[m_] - eig[n_]
+#             inv_e_d[m_, n_] = -1.0 / (e_d[m_, n_]*e_d[m_, n_] + eta * eta)
+#             # inv_e_d[m_, n_] = 1.0 / (eig[m_] - eig[n_]) if abs(eig[m_] - eig[n_]) > 1e-7 else 0.0
+#     Ah_k = np.zeros((3,num_wann,num_wann), dtype=np.complex128)
+#     # A_bar^W_a[3, num_wann, num_wann] in units angst.
+#
+#     for i in range(3):
+#         # D^H_a = UU^dag.del_a UU (a=x,y,z) = {H_bar^H_nma / (e_m - e_n)}
+#         # A^H_a = A_bar^H_a + i D^H_a = i<psi_m| del_a psi_n>
+#         Ah_k[i] = 1j * e_d * unitary_trans(A_bar_k[i], uu) - unitary_trans(ham_out[i+1], uu)
+#     omega_k = np.zeros((3, num_wann), dtype=np.float64)
+#     for n_ in range(num_wann):
+#         omega_k[0, n_] = np.sum((Ah_k[1, n_, :] * Ah_k[2, :, n_] * inv_e_d[n_, :]).imag)
+#         omega_k[1, n_] = np.sum((Ah_k[2, n_, :] * Ah_k[0, :, n_] * inv_e_d[n_, :]).imag)
+#         omega_k[2, n_] = np.sum((Ah_k[0, n_, :] * Ah_k[1, :, n_] * inv_e_d[n_, :]).imag)
+#     omega_k *= -2.0
+#     return omega_k, eig
 
 
 @njit(nogil=True)
@@ -49,7 +49,7 @@ def _get_Ah_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt):
     Ah_k = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
     # A_bar^W_a[3, num_wann, num_wann] in units angst.
     for i in range(3):
-        # D^H_a = UU^dag.del_a UU (a=x,y,z) = {H_bar^H_nma / (e_m - e_n)}
+        # D^H_a = UU^dag.del_a UU (a=x,y,z) = {H_bar^H_mna / (e_n - e_m)}
         # A^H_a = A_bar^H_a + i D^H_a = i<psi_m| del_a psi_n>
         Ah_k[i] = unitary_trans(A_bar_k[i], uu) + 1j * unitary_trans(ham_out[i + 1], uu) * inv_e_d
     return Ah_k, eig, uu
@@ -65,13 +65,13 @@ def _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, ss_R, R_vec, R_vec_cart_T,
     sw = fourier_R_to_k_vec3(ss_R, fac)[gamma]
     eig, uu = np.linalg.eigh(ham_out[0])
     e_d = np.zeros((num_wann, num_wann), dtype=np.float64)
-    inv_e_d = np.zeros((num_wann, num_wann), dtype=np.float64)
+    # inv_e_d = np.zeros((num_wann, num_wann), dtype=np.float64)
     inv2 = np.zeros((num_wann, num_wann), dtype=np.float64)
     for m_ in range(num_wann):
         for n_ in range(num_wann):
             if m_ != n_:
                 e_d[m_, n_] = eig[m_] - eig[n_]
-                inv_e_d[m_, n_] = - 1.0 / e_d[m_, n_] if abs(e_d[m_, n_]) > 1e-8 else 0.0
+                # inv_e_d[m_, n_] = - 1.0 / e_d[m_, n_] if abs(e_d[m_, n_]) > 1e-8 else 0.0
                 inv2[n_, m_] = 1.0 / (e_d[m_, n_] * e_d[m_, n_] + eta * eta)
     # ham_a = unitary_trans(ham_out[I_A[alpha_beta] + 1], uu)
     # Dh_a = ham_a * inv_e_d
@@ -97,7 +97,7 @@ def _get_Ah_bar_Dh_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt):
     Dh_k = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
     for i in range(3):
         Ah_bar_k[i] = unitary_trans(A_bar_k[i], uu)
-        # D^H_a = UU^dag.del_a UU (a=x,y,z) = {H_bar^H_nma / (e_m - e_n)}
+        # D^H_a = UU^dag.del_a UU (a=x,y,z) = {H_bar^H_mna / (e_n - e_m)}
         Dh_k[i] = unitary_trans(ham_out[i + 1], uu) * inv_e_d
     return Ah_bar_k, Dh_k, eig
 
@@ -123,7 +123,7 @@ def _get_f_omega(Ah_k, f, num_wann):
     g = 1.0 - f
     for i in range(3):
         for n_ in range(num_wann):
-            fo_k[i, n_] = np.sum((Ah_k[I_A[i], n_, :] * g * Ah_k[I_B[i], :, n_]).imag)
+            fo_k[i, n_] = np.sum(g * (Ah_k[I_A[i], n_, :] * Ah_k[I_B[i], :, n_]).imag)
     fo_k *= -2.0 * f
     return fo_k
 
@@ -152,7 +152,7 @@ def _get_f_omega_new(Ah_bar_k, Dh_k, f, num_wann):
             o_i[i, n_] = np.sum(g *
                                 ((Dh_k[I_A[i], n_, :] * Ah_bar_k[I_B[i], :, n_]).real
                                  - (Dh_k[I_B[i], n_, :] * Ah_bar_k[I_A[i], :, n_]).real))
-            o_d[i, n_] = np.sum((Dh_k[I_A[i], n_, :] * g * Dh_k[I_B[i], :, n_]).imag)
+            o_d[i, n_] = np.sum(g * (Dh_k[I_A[i], n_, :] * Dh_k[I_B[i], :, n_]).imag)
     fo_k = (o_bar + o_i - o_d) * f * -2.0
     return fo_k
 
@@ -219,8 +219,8 @@ def _get_shc_f_efs_k(ham_R, r_mat_R, R_vec, ss_R, R_vec_cart_T,
 def _get_berrycurv_f_eig_k_new(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta):
     Ah_bar_k, Dh_k, eig = _get_Ah_bar_Dh_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt)
     f = occ_fermi(eig, ef, eta)
-    omega = _get_f_omega_new(Ah_bar_k, Dh_k, f, num_wann)
-    return omega, eig
+    of_k = _get_f_omega_new(Ah_bar_k, Dh_k, f, num_wann)
+    return of_k, eig
 
 
 @njit(nogil=True)
@@ -239,14 +239,13 @@ def _get_berrycurv_f_efs_k_new(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kp
 def _get_berrycurv_f_eig_k_w(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta):
     A_bar_k, ow_k, jw_k, eig, uu = _get_Aw_bar_jw_eig_uu_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt)
     f = occ_fermi(eig, ef, eta)
-    omega = _get_f_omega_w(A_bar_k, ow_k, jw_k, f, uu, num_wann)
-    return omega, eig
+    of_k = _get_f_omega_w(A_bar_k, ow_k, jw_k, f, uu, num_wann)
+    return of_k, eig
 
 
 @njit(parallel=True, nogil=True)
 def get_berrycurv_kpar_kpath(ham_R, r_mat_R, R_vec, R_vec_cart_T,
                              num_wann, kpts, ef, eta):
-    # fac = - 1.0
     nkpts = kpts.shape[0]
     list_o_k = np.zeros((3, nkpts), dtype=np.float64)
     for ik in prange(nkpts):

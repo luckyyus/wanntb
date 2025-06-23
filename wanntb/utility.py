@@ -461,13 +461,16 @@ def spin_w(gamma, num_wann, udud_order=False):
 
 @njit(nogil=True)
 def get_inv_e_d(eig, num_wann):
+    """
+    inv_e_d[m, n] = 1 / (e_n - e_m)
+    """
     inv_e_d = np.zeros((num_wann, num_wann), dtype=np.float64)
-    for m_ in range(num_wann):
-        for n_ in range(num_wann):
+    for n_ in range(num_wann):
+        for m_ in range(num_wann):
             if m_ == n_:
                 continue
-            e_d = eig[m_] - eig[n_]
-            inv_e_d[m_, n_] = - 1.0 / e_d if abs(e_d) > 1e-8 else 0.0
+            e_d = eig[n_] - eig[m_]
+            inv_e_d[m_, n_] = 1.0 / e_d if abs(e_d) > 1e-8 else 0.0
     return inv_e_d
 # @njit(parallel=True)
 # def sz_n(uu, num_wann: int):
