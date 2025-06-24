@@ -46,11 +46,11 @@ tb = wanntb.TBSystem(npz_file=npzfile)
 # np.savetxt(path + '-shc-k%d-2.txt' % kmesh, output, fmt='%16.6f')
 
 # AgRuO
-# output = tb.get_morb_berry_kpath(ef, kpath, nkpts_path=200, direction=3, eta=1e-6)
-# np.savetxt(path + '-morb-zgz.txt', output, fmt='%16.8e')
+# output = tb.get_morb_berry_kpath(ef, kpath, nkpts_path=200, alpha_beta=2, eta=1e-6)
+# np.savetxt(path + '-morb_berry-zgz.txt', output, fmt='%16.8e')
 output = tb.get_berrycurv_kpath(ef, kpath, nkpts_path=200, eta=1e-6)
-np.savetxt(path + '-omega-zgz-1.txt', output, fmt='%16.8e')
-# output = tb.get_totmorb_kpath(ef,kpath, nkpts_path=200, alpha_beta=2, eta=1e-4, q=1e-8)
-# np.savetxt(path + '-totmorb-zgz.txt', output, fmt='%16.8e')
+np.savetxt(path + '-omega-zgz-Ah.txt', output, fmt='%16.8e')  # Ah, Abar_Dh, W
+output = tb.get_totmorb_kpath(ef,kpath, nkpts_path=200, alpha_beta=2, eta=1e-4, q=1e-8)
+np.savetxt(path + '-totmorb-zgz.txt', output, fmt='%16.8e')
 
 # np.savetxt(path + '-occ-k%d.txt' % kmesh, output, fmt='%16.6f')

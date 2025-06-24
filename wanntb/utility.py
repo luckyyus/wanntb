@@ -238,11 +238,17 @@ def read_tb_file(tb_file='wannier90_tb.dat'):
                            for m in range(num_wann)], dtype=np.float64)
             r_mat_R[ir, :, :, :] = (aa[:,:,0::2] + 1j*aa[:,:,1::2]).transpose((2,1,0))
         print('r_mat_R: %s %s' % (r_mat_R.dtype, list(r_mat_R.shape)))
+    for ir in range(n_Rpts):
+        ham_R /= n_degen[ir]
+        r_mat_R /= n_degen[ir]
+    ham_R = hermiization_R(ham_R, R_vec)
+    r_mat_R = hermiization_R(r_mat_R, R_vec)
+    n_degen[:] = 1
     # real_lattice[3,3] float
     # recip_lattice[3,3] float
     # ham_R[n_Rpts, num_wann, num_wann] complex
-    # R_vec[n_Rpts, 3] float
-    # n_degen[n_Rpts] int
+    # R_vec[n_Rpts, 3] int16
+    # n_degen[n_Rpts] uint8
     # r_mat_R[n_Rpts, 3, num_wann, num_wann] complex
     return {'seedname': seedname,
             'num_wann': num_wann,
@@ -293,7 +299,7 @@ def fourier_phase_R_to_k(R_vec, kpt):
 
 
 @njit(nogil=True)
-def fourier_R_to_k(mat_R, R_vec_cart_T, phase_fac, iout=[0]):
+def fourier_R_to_k(mat_R, R_cartT, phase_fac, iout=[0]):
     """
     把一个厄米矩阵从R空间转变到k空间
     @param mat_R: R空间的厄米矩阵，单位 eV
@@ -303,57 +309,57 @@ def fourier_R_to_k(mat_R, R_vec_cart_T, phase_fac, iout=[0]):
     """
     n_rpt, num_wann, _ = mat_R.shape
     output = np.zeros((4, num_wann, num_wann), dtype=np.complex128)
-    # for ir in range(n_rpt):
-    #     output[0] += mat_R[ir, :, :] * phase_fac[ir]
-    #     if 1 in iout:
-    #         output[1] = R_vec_cart_T[0, ir] * phase_fac[ir] * mat_R[ir, :, :] * 1j
-    # output[0] = phase_fac @ mat_R
+    # output[0] = np.sum(mat_R * phase_fac, axis=2)
     # if 1 in iout:
-    #     output[1] = (R_vec_cart_T[0] * phase_fac) @ mat_R * 1j
+    #     output[1] = np.sum(mat_R * R_cartT[0] * phase_fac, axis=2) * 1j
     # if 2 in iout:
-    #     output[2] = (R_vec_cart_T[1] * phase_fac) @ mat_R * 1j
+    #     output[2] = np.sum(mat_R * R_cartT[0] * phase_fac, axis=2) * 1j
     # if 3 in iout:
-    #     output[3] = (R_vec_cart_T[2] * phase_fac) @ mat_R * 1j
+    #     output[3] = np.sum(mat_R * R_cartT[0] * phase_fac, axis=2) * 1j
     for i in range(num_wann):
         for j in range(num_wann):
-            mat_Rij = np.ascontiguousarray(mat_R[:, i, j])
+            mat_Rij = mat_R[i, j]
             output[0, i, j] = np.sum(mat_Rij * phase_fac)
             if 1 in iout:
-                output[1, i, j] = np.sum(mat_Rij * R_vec_cart_T[0] * phase_fac) * 1j
+                output[1, i, j] = np.sum(mat_Rij * R_cartT[0] * phase_fac) * 1j
             if 2 in iout:
-                output[2, i, j] = np.sum(mat_Rij * R_vec_cart_T[1] * phase_fac) * 1j
+                output[2, i, j] = np.sum(mat_Rij * R_cartT[1] * phase_fac) * 1j
             if 3 in iout:
-                output[3, i, j] = np.sum(mat_Rij * R_vec_cart_T[2] * phase_fac) * 1j
+                output[3, i, j] = np.sum(mat_Rij * R_cartT[2] * phase_fac) * 1j
     return output
 
 
 @njit(nogil=True)
 def fourier_R_to_k_vec3(vec_R, phase_fac):
     n_rpt, _, num_wann, _ = vec_R.shape
+    # oo_true = np.sum(vec_R * phase_fac, axis=3)
     oo_true = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
     for k in range(3):
         for i in range(num_wann):
             for j in range(num_wann):
-                vec_Rkij = np.ascontiguousarray(vec_R[:, k, i, j])
-                oo_true[k, i, :] = np.sum(vec_Rkij * phase_fac)
+                vec_Rkij = np.ascontiguousarray(vec_R[k, i, j])
+                oo_true[k, i, j] = np.sum(vec_Rkij * phase_fac)
     return oo_true
 
 
 @njit(nogil=True)
-def fourier_R_to_k_curl(vec_R, phase_fac, R_vec_cart_T):
+def fourier_R_to_k_curl(vec_R, phase_fac, R_cartT):
     n_rpt, _, num_wann, _ = vec_R.shape
     oo_curl = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
+    # oo_curl[0] = np.sum((vec_R[2] * R_cartT[1] - vec_R[1] * R_cartT[2]) * phase_fac, axis=3) * 1j
+    # oo_curl[1] = np.sum((vec_R[0] * R_cartT[2] - vec_R[2] * R_cartT[0]) * phase_fac, axis=3) * 1j
+    # oo_curl[2] = np.sum((vec_R[1] * R_cartT[0] - vec_R[0] * R_cartT[1]) * phase_fac, axis=3) * 1j
     for i in range(num_wann):
         for j in range(num_wann):
-            vec_ij_0 = np.ascontiguousarray(vec_R[:, 0, i, j])
-            vec_ij_1 = np.ascontiguousarray(vec_R[:, 1, i, j])
-            vec_ij_2 = np.ascontiguousarray(vec_R[:, 2, i, j])
-            oo_curl[0, i, j] = np.sum((R_vec_cart_T[1] * vec_ij_2
-                                       - R_vec_cart_T[2] * vec_ij_1) * phase_fac) * 1j
-            oo_curl[1, i, j] = np.sum((R_vec_cart_T[2] * vec_ij_0
-                                       - R_vec_cart_T[0] * vec_ij_2) * phase_fac) * 1j
-            oo_curl[2, i, j] = np.sum((R_vec_cart_T[0] * vec_ij_1
-                                       - R_vec_cart_T[1] * vec_ij_0) * phase_fac) * 1j
+            vec_ij_0 = vec_R[0, i, j]
+            vec_ij_1 = vec_R[1, i, j]
+            vec_ij_2 = vec_R[2, i, j]
+            oo_curl[0, i, j] = np.sum((R_cartT[1] * vec_ij_2
+                                       - R_cartT[2] * vec_ij_1) * phase_fac) * 1j
+            oo_curl[1, i, j] = np.sum((R_cartT[2] * vec_ij_0
+                                       - R_cartT[0] * vec_ij_2) * phase_fac) * 1j
+            oo_curl[2, i, j] = np.sum((R_cartT[0] * vec_ij_1
+                                       - R_cartT[1] * vec_ij_0) * phase_fac) * 1j
     return oo_curl
 
 @njit(nogil=True)
@@ -382,7 +388,7 @@ def get_eig_da(eig, ham_da, uu, num_wann, eig_diff=1e-4):
 
 
 @njit(nogil=True)
-def _ham_k_da_system(ham_R, R_vec, R_vec_cart_T, num_wann, kpt, direction):
+def _ham_k_da_system(ham_R, R_vec, R_cartT, num_wann, kpt, direction):
     """
     计算一个k点的哈密顿量、本征值、征值随k的某个方向的导数和本征态。
     @param ham_R: R空间的紧束缚哈密顿量
@@ -394,7 +400,7 @@ def _ham_k_da_system(ham_R, R_vec, R_vec_cart_T, num_wann, kpt, direction):
     @return: k空间哈密顿量，本征值，本征值随k的导数，本征态
     """
     fac = fourier_phase_R_to_k(R_vec, kpt)
-    out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[direction])
+    out = fourier_R_to_k(ham_R, R_cartT, fac, iout=[direction])
     ham_k, ham_k_da = out[0], out[direction]
     eig, uu = np.linalg.eigh(ham_k)
     eig_da = get_eig_da(eig, ham_k_da, uu, num_wann)
@@ -406,21 +412,21 @@ def _ham_k_da_system(ham_R, R_vec, R_vec_cart_T, num_wann, kpt, direction):
 
 
 @njit(nogil=True)
-def _ham_k_system(ham_R, R_vec, R_vec_cart_T, kpt):
+def _ham_k_system(ham_R, R_vec, R_cartT, kpt):
     fac = fourier_phase_R_to_k(R_vec, kpt)
-    ham_k = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[5])[0]
+    ham_k = fourier_R_to_k(ham_R, R_cartT, fac, iout=[5])[0]
     eig, uu = np.linalg.eigh(ham_k)
     return ham_k, eig, uu
 
 
 @njit(parallel=True, nogil=True)
-def get_eig_for_kpts_kpar(ham_R, R_vec, R_vec_cart_T, num_wann, kpts):
+def get_eig_for_kpts_kpar(ham_R, R_vec, R_cartT, num_wann, kpts):
     nkpts = kpts.shape[0]
     eigs = np.zeros((nkpts, num_wann), dtype=float)
     for ik in prange(nkpts):
         kpt = kpts[ik]
         fac = fourier_phase_R_to_k(R_vec, kpt)
-        ham_k = fourier_R_to_k(ham_R, R_vec_cart_T, fac)[0]
+        ham_k = fourier_R_to_k(ham_R, R_cartT, fac)[0]
         eig, uu = np.linalg.eigh(ham_k)
         eigs[ik, :] = eig
     return eigs

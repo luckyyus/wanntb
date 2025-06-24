@@ -2,7 +2,7 @@ import numpy as np
 from numba import njit, prange
 from .constant import TwoPi, Hbar_, Mu_B_
 from .utility import fourier_phase_R_to_k, fourier_R_to_k, fourier_R_to_k_vec3, unitary_trans, occ_fermi, \
-    fourier_R_to_k_curl, spin_w, get_eig_da, unitary_trans_sub, _ham_k_system, get_inv_e_d
+    fourier_R_to_k_curl, unitary_trans_sub, _ham_k_system, get_inv_e_d
 
 I_A = np.array([1, 2, 0], dtype=np.int32)
 I_B = np.array([2, 0, 1], dtype=np.int32)
@@ -39,9 +39,9 @@ I_B = np.array([2, 0, 1], dtype=np.int32)
 
 
 @njit(nogil=True)
-def _get_Ah_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt):
+def _get_Ah_eig_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt):
     fac = fourier_phase_R_to_k(R_vec, kpt)
-    ham_out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[1, 2, 3])
+    ham_out = fourier_R_to_k(ham_R, R_cartT, fac, iout=[1, 2, 3])
     # A_bar^W_a[3, num_wann, num_wann] in units angst.
     A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
     eig, uu = np.linalg.eigh(ham_out[0])
@@ -56,10 +56,10 @@ def _get_Ah_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt):
 
 
 @njit(nogil=True)
-def _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, ss_R, R_vec, R_vec_cart_T,
+def _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, ss_R, R_vec, R_cartT,
                            num_wann, kpt, eta, alpha_beta, gamma, subwf=None):
     fac = fourier_phase_R_to_k(R_vec, kpt)
-    ham_out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[1, 2, 3])
+    ham_out = fourier_R_to_k(ham_R, R_cartT, fac, iout=[1, 2, 3])
     # A_bar^W_a[3, num_wann, num_wann] in units angst.
     A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
     sw = fourier_R_to_k_vec3(ss_R, fac)[gamma]
@@ -87,9 +87,9 @@ def _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, ss_R, R_vec, R_vec_cart_T,
 
 
 @njit(nogil=True)
-def _get_Ah_bar_Dh_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt):
+def _get_Ah_bar_Dh_eig_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt):
     fac = fourier_phase_R_to_k(R_vec, kpt)
-    ham_out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[1, 2, 3])
+    ham_out = fourier_R_to_k(ham_R, R_cartT, fac, iout=[1, 2, 3])
     A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
     eig, uu = np.linalg.eigh(ham_out[0])
     inv_e_d = get_inv_e_d(eig, num_wann)
@@ -103,11 +103,11 @@ def _get_Ah_bar_Dh_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt):
 
 
 @njit(nogil=True)
-def _get_Aw_bar_jw_eig_uu_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt):
+def _get_Aw_bar_jw_eig_uu_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt):
     fac = fourier_phase_R_to_k(R_vec, kpt)
-    ham_out = fourier_R_to_k(ham_R, R_vec_cart_T, fac, iout=[1, 2, 3])
+    ham_out = fourier_R_to_k(ham_R, R_cartT, fac, iout=[1, 2, 3])
     A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
-    ow_k = fourier_R_to_k_curl(r_mat_R, fac, R_vec_cart_T)
+    ow_k = fourier_R_to_k_curl(r_mat_R, fac, R_cartT)
     eig, uu = np.linalg.eigh(ham_out[0])
     inv_e_d = get_inv_e_d(eig, num_wann)
     jw_k = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
@@ -148,7 +148,7 @@ def _get_f_omega_new(Ah_bar_k, Dh_k, f, num_wann):
     o_d = np.zeros((3, num_wann), dtype=np.float64)
     for i in range(3):
         for n_ in range(num_wann):
-            o_bar[i, n_] = np.sum((Ah_bar_k[I_A[i], n_, :] * Ah_bar_k[I_B[i], :, n_]).imag)
+            o_bar[i, n_] = np.sum(g * (Ah_bar_k[I_A[i], n_, :] * Ah_bar_k[I_B[i], :, n_]).imag)
             o_i[i, n_] = np.sum(g *
                                 ((Dh_k[I_A[i], n_, :] * Ah_bar_k[I_B[i], :, n_]).real
                                  - (Dh_k[I_B[i], n_, :] * Ah_bar_k[I_A[i], :, n_]).real))
@@ -174,25 +174,35 @@ def _get_f_omega_w(A_bar_k, ow_k, jw_k, f, uu, num_wann):
 
 @njit(nogil=True)
 def _get_f_omega_interpolation(f, duu, num_wann):
+    g = 1.0 - f
     fo_k = np.zeros((3, num_wann), dtype=np.float64)
     for i in range(3):
         for n_ in range(num_wann):
-            fo_k[i, n_] = np.dot(duu[I_A[i], :, n_].conj(), duu[I_B[i], :, n_]).imag
+            fo_k[i, n_] = np.sum(g * (duu[I_A[i], :, n_].conj() * duu[I_B[i], :, n_]).imag)
     fo_k *= -2.0 * f
     return fo_k
 
 @njit(nogil=True)
-def _get_berrycurv_f_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta):
-    Ah_k, eig, uu = _get_Ah_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt)
-    f = occ_fermi(eig, ef, eta)
-    of_k = _get_f_omega(Ah_k, f, num_wann)
+def _get_berrycurv_f_eig_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt, ef, eta, mode=0):
+    if mode == 1:
+        Ah_bar_k, Dh_k, eig = _get_Ah_bar_Dh_eig_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt)
+        f = occ_fermi(eig, ef, eta)
+        of_k = _get_f_omega_new(Ah_bar_k, Dh_k, f, num_wann)
+    elif mode == 2:
+        A_bar_k, ow_k, jw_k, eig, uu = _get_Aw_bar_jw_eig_uu_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt)
+        f = occ_fermi(eig, ef, eta)
+        of_k = _get_f_omega_w(A_bar_k, ow_k, jw_k, f, uu, num_wann)
+    else:
+        Ah_k, eig, uu = _get_Ah_eig_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt)
+        f = occ_fermi(eig, ef, eta)
+        of_k = _get_f_omega(Ah_k, f, num_wann)
     return of_k, eig
 
 
 @njit(nogil=True)
-def _get_berrycurv_f_efs_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, efs, eta):
+def _get_berrycurv_f_efs_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt, efs, eta):
     n_ef = efs.shape[0]
-    Ah_k, eig, uu = _get_Ah_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt)
+    Ah_k, eig, uu = _get_Ah_eig_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt)
     ofg_k = np.zeros((3, n_ef, num_wann), dtype=np.float64)
     for i in range(n_ef):
         ef = efs[i]
@@ -202,11 +212,11 @@ def _get_berrycurv_f_efs_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, e
 
 
 @njit(nogil=True)
-def _get_shc_f_efs_k(ham_R, r_mat_R, R_vec, ss_R, R_vec_cart_T,
+def _get_shc_f_efs_k(ham_R, r_mat_R, R_vec, ss_R, R_cartT,
                      num_wann, kpt, efs, eta, alpha_beta, gamma, subwf=None):
     n_ef = efs.shape[0]
-    v_b, jsd, inv2, eig = _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, ss_R, R_vec, R_vec_cart_T, num_wann, kpt,
-                                                  eta, alpha_beta, gamma, subwf=subwf)
+    v_b, jsd, inv2, eig = _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, ss_R, R_vec, R_cartT, num_wann, kpt,
+                                                 eta, alpha_beta, gamma, subwf=subwf)
     ofg_k = np.zeros((n_ef, num_wann), dtype=np.float64)
     for i in range(n_ef):
         ef = efs[i]
@@ -215,50 +225,32 @@ def _get_shc_f_efs_k(ham_R, r_mat_R, R_vec, ss_R, R_vec_cart_T,
     return np.sum(ofg_k, axis=1)
 
 
-@njit(nogil=True)
-def _get_berrycurv_f_eig_k_new(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta):
-    Ah_bar_k, Dh_k, eig = _get_Ah_bar_Dh_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt)
-    f = occ_fermi(eig, ef, eta)
-    of_k = _get_f_omega_new(Ah_bar_k, Dh_k, f, num_wann)
-    return of_k, eig
-
-
-@njit(nogil=True)
-def _get_berrycurv_f_efs_k_new(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, efs, eta):
-    n_ef = efs.shape[0]
-    Ah_bar_k, Dh_k, eig = _get_Ah_bar_Dh_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt)
-    ofg_k = np.zeros((3, n_ef, num_wann), dtype=np.float64)
-    for i in range(n_ef):
-        ef = efs[i]
-        f = occ_fermi(eig, ef, eta)
-        ofg_k[:, i, :] = _get_f_omega_new(Ah_bar_k, Dh_k, f, num_wann)
-    return np.sum(ofg_k, axis=2)
-
-
-@njit(nogil=True)
-def _get_berrycurv_f_eig_k_w(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta):
-    A_bar_k, ow_k, jw_k, eig, uu = _get_Aw_bar_jw_eig_uu_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt)
-    f = occ_fermi(eig, ef, eta)
-    of_k = _get_f_omega_w(A_bar_k, ow_k, jw_k, f, uu, num_wann)
-    return of_k, eig
+# @njit(nogil=True)
+# def _get_berrycurv_f_efs_k_new(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, efs, eta):
+#     n_ef = efs.shape[0]
+#     Ah_bar_k, Dh_k, eig = _get_Ah_bar_Dh_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt)
+#     ofg_k = np.zeros((3, n_ef, num_wann), dtype=np.float64)
+#     for i in range(n_ef):
+#         ef = efs[i]
+#         f = occ_fermi(eig, ef, eta)
+#         ofg_k[:, i, :] = _get_f_omega_new(Ah_bar_k, Dh_k, f, num_wann)
+#     return np.sum(ofg_k, axis=2)
 
 
 @njit(parallel=True, nogil=True)
-def get_berrycurv_kpar_kpath(ham_R, r_mat_R, R_vec, R_vec_cart_T,
+def get_berrycurv_kpar_kpath(ham_R, r_mat_R, R_vec, R_cartT,
                              num_wann, kpts, ef, eta):
     nkpts = kpts.shape[0]
     list_o_k = np.zeros((3, nkpts), dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
-        # oo, eig = _get_berrycurv_f_eig_k_new(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta)
-        # oo, eig = _get_berrycurv_f_eig_k_w(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta)
-        oo, eig = _get_berrycurv_f_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta)
+        oo, eig = _get_berrycurv_f_eig_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt, ef, eta, mode=0)
         list_o_k[:, ik] = np.sum(oo, axis=1)
     return list_o_k.T
 
 
 @njit(parallel=True, nogil=True)
-def get_ahc_kpar_fermi(ham_R, r_mat_R, R_vec, R_vec_cart_T,
+def get_ahc_kpar_fermi(ham_R, r_mat_R, R_vec, R_cartT,
                        num_wann, kpts, efs, eta):
     fac = - TwoPi
     nkpts = kpts.shape[0]
@@ -269,12 +261,12 @@ def get_ahc_kpar_fermi(ham_R, r_mat_R, R_vec, R_vec_cart_T,
         # list_o_ef_k[:, :, ik] = _get_berrycurv_f_efs_k_new(
         #         ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, efs, eta)
         list_o_ef_k[:, :, ik] = _get_berrycurv_f_efs_k(
-                ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, efs, eta)
+                ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt, efs, eta)
     return (np.sum(list_o_ef_k, axis=2) / nkpts * fac).T
 
 
 @njit(parallel=True, nogil=True)
-def get_shc_kpar_fermi(ham_R, r_mat_R, R_vec, ss_R, R_vec_cart_T,
+def get_shc_kpar_fermi(ham_R, r_mat_R, R_vec, ss_R, R_cartT,
                        num_wann, kpts, efs, eta, alpha_beta, gamma, subwf):
     fac = - TwoPi
     nkpts = kpts.shape[0]
@@ -283,55 +275,52 @@ def get_shc_kpar_fermi(ham_R, r_mat_R, R_vec, ss_R, R_vec_cart_T,
     list_o_ef_k = np.zeros((n_ef, nkpts), dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
-        list_o_ef_k[:, ik] = _get_shc_f_efs_k(ham_R, r_mat_R, R_vec, ss_R, R_vec_cart_T,
+        list_o_ef_k[:, ik] = _get_shc_f_efs_k(ham_R, r_mat_R, R_vec, ss_R, R_cartT,
                                               num_wann, kpt, efs, eta, alpha_beta, gamma, subwf=subwf)
     return np.sum(list_o_ef_k, axis=1) / nkpts * fac
 
 
 @njit(parallel=True, nogil=True)
-def get_morb_berry_kpar_kpath(ham_R, r_mat_R, R_vec, R_vec_cart_T,
-                              num_wann, kpts, ef, eta, direction):
+def get_morb_berry_kpar_kpath(ham_R, r_mat_R, R_vec, R_cartT,
+                              num_wann, kpts, ef, eta, alpha_beta):
     fac = 1e-8 / Hbar_ / Mu_B_
     nkpts = kpts.shape[0]
     morb_k = np.zeros(nkpts, dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
-        # oo, eig = _get_berrycurv_f_eig_k_new(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta)
-        # oo, eig = _get_berrycurv_f_eig_k_w(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta)
-        oo, eig = _get_berrycurv_f_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta)
-        morb_k[ik] = np.sum(oo[direction-1, :] * (ef - eig))
+        oo, eig = _get_berrycurv_f_eig_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt, ef, eta, mode=0)
+        morb_k[ik] = np.sum(oo[alpha_beta, :] * (ef - eig))
     return morb_k * fac
 
 
 @njit(parallel=True, nogil=True)
-def get_morb_berry_kpar(ham_R, r_mat_R, R_vec, R_vec_cart_T,
-                        num_wann, kpts, ef, eta, direction):
+def get_morb_berry_kpar(ham_R, r_mat_R, R_vec, R_cartT,
+                        num_wann, kpts, ef, eta, alpha_beta):
     fac = 1e-8 / Hbar_ / Mu_B_
     nkpts = kpts.shape[0]
     morb_k = np.zeros(nkpts, dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
-        # oo, eig = _get_berrycurv_f_eig_k_new(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta)
-        oo, eig = _get_berrycurv_f_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt, ef, eta)
-        morb_k[ik] = np.sum(oo[direction - 1, :] * (ef - eig))
+        oo, eig = _get_berrycurv_f_eig_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt, ef, eta, mode=0)
+        morb_k[ik] = np.sum(oo[alpha_beta, :] * (ef - eig))
     return np.sum(morb_k) * fac / nkpts
 
 
 @njit(nogil=True)
-def get_deltaU(ham_R, R_vec, R_vec_cart_T, num_wann, kpt, q_frac, q, order=2):
+def get_deltaU(ham_R, R_vec, R_cartT, num_wann, kpt, q_frac, q, order=2):
     # duu[idim, iproj, iband]
     duu = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
     if order == 4:
         for i in range(3):
-            h1, eig1, uu1 = _ham_k_system(ham_R, R_vec, R_vec_cart_T, kpt - 2 * q_frac[i])
-            h2, eig2, uu2 = _ham_k_system(ham_R, R_vec, R_vec_cart_T, kpt - q_frac[i])
-            h3, eig3, uu3 = _ham_k_system(ham_R, R_vec, R_vec_cart_T, kpt + q_frac[i])
-            h4, eig4, uu4 = _ham_k_system(ham_R, R_vec, R_vec_cart_T, kpt + 2 * q_frac[i])
+            h1, eig1, uu1 = _ham_k_system(ham_R, R_vec, R_cartT, kpt - 2 * q_frac[i])
+            h2, eig2, uu2 = _ham_k_system(ham_R, R_vec, R_cartT, kpt - q_frac[i])
+            h3, eig3, uu3 = _ham_k_system(ham_R, R_vec, R_cartT, kpt + q_frac[i])
+            h4, eig4, uu4 = _ham_k_system(ham_R, R_vec, R_cartT, kpt + 2 * q_frac[i])
             duu[i] = (uu1 - 8 * uu2 + 8 * uu3 - uu4) / (12 * q)
     else:
         for i in range(3):
-            h1, eig1, uu1 = _ham_k_system(ham_R, R_vec, R_vec_cart_T, kpt - q_frac[i])
-            h2, eig2, uu2 = _ham_k_system(ham_R, R_vec, R_vec_cart_T, kpt + q_frac[i])
+            h1, eig1, uu1 = _ham_k_system(ham_R, R_vec, R_cartT, kpt - q_frac[i])
+            h2, eig2, uu2 = _ham_k_system(ham_R, R_vec, R_cartT, kpt + q_frac[i])
             duu[i] = (uu2 - uu1) / (2 * q)
     return duu
 
@@ -352,17 +341,17 @@ def _get_morb1_morb2_k(eig, num_wann, ef, duu, fo_k, f, alpha_beta):
 
 
 @njit(parallel=True, nogil=True)
-def get_totmorb_kpar_kpath(ham_R, r_mat_R, R_vec, R_vec_cart_T,
-                              num_wann, kpts, q_frac, q, ef, eta, alpha_beta):
+def get_totmorb_kpar_kpath(ham_R, r_mat_R, R_vec, R_cartT,
+                           num_wann, kpts, q_frac, q, ef, eta, alpha_beta):
     fac = 1e-8 / Hbar_ / Mu_B_
     nkpts = kpts.shape[0]
     # 0: morb1; 1: morb2; 2: totmorb
     morb_k = np.zeros((nkpts, 3), dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
-        Ah_k, eig, uu = _get_Ah_eig_k(ham_R, r_mat_R, R_vec, R_vec_cart_T, num_wann, kpt)
+        Ah_k, eig, uu = _get_Ah_eig_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt)
         # ham_k, eig, uu = _ham_k_system(ham_R, R_vec, R_vec_cart_T, kpt)
-        duu = get_deltaU(ham_R, R_vec, R_vec_cart_T, num_wann, kpt, q_frac, q, order=2)
+        duu = get_deltaU(ham_R, R_vec, R_cartT, num_wann, kpt, q_frac, q, order=2)
         # duu in bloch basis
         for i in range(3):
             duu[i] = uu.conj().T @ duu[i]
