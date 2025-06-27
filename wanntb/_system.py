@@ -275,13 +275,14 @@ class TBSystem:
         print('time used: %24.2f <-- get_carrier' % (datetime.now() - start).total_seconds())
         return sum_o
 
-    def get_berrycurv_kpath(self, ef, kpath, nkpts_path=100, eta=1e-4):
+    def get_berrycurv_kpath(self, ef, kpath, nkpts_path=100, eta=1e-4, mode=0, q=0.0):
         start = datetime.now()
         print('---------- start get_berrycurv_kpath ----------')
         kpts, kpts_len = kp.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
+        q_frac = q * self.real_lattice / TwoPi if q > 1e-16 else None
         omega = get_berrycurv_kpar_kpath(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
-                                         self.num_wann, kpts, ef, eta)
+                                         self.num_wann, kpts, ef, eta, mode=mode, q_frac=q_frac, q=q)
         list_o_k = np.column_stack((kpts_len, omega))
         print('time used: %24.2f <-- get_berrycurv_kpath' % (datetime.now() - start).total_seconds())
         return list_o_k

@@ -32,3 +32,14 @@ S_ = np.array([
     [[ 1.0,  0.0],
      [ 0.0, -1.0]]
     ], dtype=complex)
+
+Berry_Task = {
+    'ahc': 0,
+    'ahc-AD': 1,
+    'ahc-W': 2,
+    'ahc-sub': 3,
+    'shc': 10,
+    'shc-sub': 11,
+    'morb': 20,
+    'morb-iuu': 21
+}
