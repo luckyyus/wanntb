@@ -364,3 +364,7 @@ def get_totmorb_kpar_kpath(ham_R, r_mat_R, R_vec, R_cartT,
         morb_k[ik, 1] = np.sum(morb2)
     morb_k[:, 2] = morb_k[:, 0] + morb_k[:, 1]
     return morb_k * fac
+
+def berry_kpath(task, ham_R, r_mat_R, R_vec, R_cartT,
+                           num_wann, kpts, ef, eta, alpha_beta=2, q_frac=None, q=1e-8):
+    return

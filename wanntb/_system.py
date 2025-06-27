@@ -57,6 +57,7 @@ class TBSystem:
             if 'ss_R' in data.files:
                 self.ss_R = data['ss_R']
                 print('ss_R: %s %s' % (data['ss_R'].dtype, list(data['ss_R'].shape)))
+                self._ss_R = np.ascontiguousarray(self.ss_R.transpose((1,2,3,0)))
             self.num_wann = self.ham_R.shape[1]
             self.n_Rpts = self.R_vec.shape[0]
             self.n_degen = np.ones(self.n_Rpts, dtype=np.uint8)
@@ -90,7 +91,9 @@ class TBSystem:
 
     def load_spins(self, ss_file='wannier90_SS_R.dat'):
         start = datetime.now()
+        print('---------- start load_spins ----------')
         self.ss_R = ut.read_spin_file(self.R_vec,self.n_Rpts, self.num_wann, ss_file=ss_file)
+        self._ss_R = np.ascontiguousarray(self.ss_R.transpose((1, 2, 3, 0)))
         print('time used: %24.2f <-- load_spins' % (datetime.now() - start).total_seconds())
 
     def output_npz(self, seedname='packaged'):
@@ -331,7 +334,7 @@ class TBSystem:
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
-        shc_efs = get_shc_kpar_fermi(self._ham_RT, self._r_RT, self._Rvec, self.ss_R, self._R_cartT,
+        shc_efs = get_shc_kpar_fermi(self._ham_RT, self._r_RT, self._Rvec, self._ss_R, self._R_cartT,
                                      self.num_wann, kpts, efs, eta, alpha_beta, gamma, subwf)
         shc_efs /= self.area[alpha_beta]
         output = np.column_stack((efs, shc_efs))
