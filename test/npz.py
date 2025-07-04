@@ -4,7 +4,7 @@ import wanntb
 
 # for uu in ['05', '10', '15', '20']:
 # path = 'MBT-sl3-soc-af001'
-path = 'MBT-sl6-soc-af001'
+path = 'MBT-sl3-soc-af001'
 # path = 'AgRuO-soc'
 # path = 'MnSe-soc-af100'
 # path = 'MnTe-u4-soc-af1x'

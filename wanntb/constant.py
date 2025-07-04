@@ -35,11 +35,6 @@ S_ = np.array([
 
 Berry_Task = {
     'ahc': 0,
-    'ahc-AD': 1,
-    'ahc-W': 2,
-    'ahc-sub': 3,
     'shc': 10,
-    'shc-sub': 11,
-    'morb': 20,
-    'morb-iuu': 21
+    'morb': 20
 }

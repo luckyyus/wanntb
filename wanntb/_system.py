@@ -309,7 +309,7 @@ class TBSystem:
         print('time used: %24.2f <-- get_morb_berry_kmesh' % (datetime.now() - start).total_seconds())
         return morb
 
-    def get_ahc_kmesh_fermi(self, kmesh, ef_min, ef_max, n_ef, eta=1e-4):
+    def get_ahc_kmesh_fermi(self, kmesh, ef_min, ef_max, n_ef, eta=1e-4, subwf=None):
         start = datetime.now()
         print('---------- start get_ahc_kmesh_fermi ----------')
         kpts = kp.get_kpts_mesh(kmesh)
@@ -317,7 +317,7 @@ class TBSystem:
         efs = np.linspace(ef_min, ef_max, n_ef+1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
         ahc_efs = get_ahc_kpar_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
-                                     self.num_wann, kpts, efs, eta)
+                                     self.num_wann, kpts, efs, eta, subwf)
         output = np.zeros((efs.shape[0], 4), dtype=float)
         output[:, 0] = efs
         output[:, 1:] = ahc_efs / self.area
