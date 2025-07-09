@@ -34,7 +34,19 @@ S_ = np.array([
     ], dtype=complex)
 
 Berry_Task = {
-    'ahc': 0,
-    'shc': 10,
-    'morb': 20
+    'ahc':{
+        'itask': 0,
+        'columns' : ['sigma_x', 'sigma_y', 'sigma_z'],
+        'units_fermi': 'e^2/h'
+    },
+    'shc':{
+        'itask': 10,
+        'columns' : ['sigma_ab^x', 'sigma_ab^y', 'sigma_ab^z'],
+        'units_fermi': 'e^2/h(hbar/2e)'
+    },
+    'morb': {
+        'itask': 20,
+        'columns' : ['morb1_xyz', 'morb2_xyz', 'morb_xyz'],
+        'units_fermi': 'mu_B'
+    },
 }

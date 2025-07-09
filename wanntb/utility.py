@@ -239,8 +239,8 @@ def read_tb_file(tb_file='wannier90_tb.dat'):
             r_mat_R[ir, :, :, :] = (aa[:,:,0::2] + 1j*aa[:,:,1::2]).transpose((2,1,0))
         print('r_mat_R: %s %s' % (r_mat_R.dtype, list(r_mat_R.shape)))
     for ir in range(n_Rpts):
-        ham_R /= n_degen[ir]
-        r_mat_R /= n_degen[ir]
+        ham_R[ir] /= n_degen[ir]
+        r_mat_R[ir] /= n_degen[ir]
     ham_R = hermiization_R(ham_R, R_vec)
     r_mat_R = hermiization_R(r_mat_R, R_vec)
     n_degen[:] = 1

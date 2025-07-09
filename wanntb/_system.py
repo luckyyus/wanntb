@@ -2,10 +2,10 @@ import numpy as np
 from datetime import datetime
 from . import kpoints as kp
 from . import utility as ut
-from .constant import Cart, TwoPi, Hbar_
+from .constant import Cart, TwoPi, Hbar_, Berry_Task
 from ._dos import get_occ_dos_kpar, get_occ_dos_proj_kpar
 from ._berry import get_ahc_kpar_fermi, get_morb_berry_kpar_kpath, get_morb_berry_kpar, \
-                     get_berrycurv_kpar_kpath, get_shc_kpar_fermi, get_totmorb_kpar_kpath
+    get_berrycurv_kpar_kpath, get_shc_kpar_fermi, get_totmorb_kpar_kpath, berry_fermi
 from ._alpha_beta import get_alpha_beta_kpar, get_alpha_beta_kpar_kpath, get_alpha_beta_efs_kpar
 
 
@@ -134,7 +134,7 @@ class TBSystem:
         return k_frac @ self.recip_lattice
 
     def get_onsite_energy(self):
-        return np.diagonal(self.ham_R[self.iR0, :, :]).real
+        return np.diag(self.ham_R[self.iR0, :, :]).real
 
     def get_spin_splitting(self):
         onsite = self.get_onsite_energy()
@@ -309,23 +309,27 @@ class TBSystem:
         print('time used: %24.2f <-- get_morb_berry_kmesh' % (datetime.now() - start).total_seconds())
         return morb
 
-    def get_ahc_kmesh_fermi(self, kmesh, ef_min, ef_max, n_ef, eta=1e-4, subwf=None):
+    def get_ahc_kmesh_fermi(self, kmesh: tuple[int, int, int],
+                            ef_range: tuple[float, float, int],
+                            eta=1e-4, mode=0, subwf=None):
         start = datetime.now()
         print('---------- start get_ahc_kmesh_fermi ----------')
         kpts = kp.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
+        ef_min, ef_max, n_ef = ef_range[0], ef_range[1], ef_range[2]
         efs = np.linspace(ef_min, ef_max, n_ef+1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
         ahc_efs = get_ahc_kpar_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
-                                     self.num_wann, kpts, efs, eta, subwf)
-        output = np.zeros((efs.shape[0], 4), dtype=float)
-        output[:, 0] = efs
-        output[:, 1:] = ahc_efs / self.area
+                                     self.num_wann, kpts, efs, eta, mode=mode, subwf=subwf)
+        print('ahc_efs:', type(ahc_efs), ahc_efs.shape)
+        ahc_efs /= self.area
+        output = np.column_stack((efs, ahc_efs))
         print('time used: %24.2f <-- get_ahc_kmesh_fermi' % (datetime.now() - start).total_seconds())
         return output
 
-    def get_shc_kmesh_fermi(self, kmesh, ef_min, ef_max, n_ef, eta=1e-4,
-                            alpha_beta=2, gamma=2, subwf=None):
+    def get_shc_kmesh_fermi(self, kmesh: tuple[int, int, int],
+                            ef_range: tuple[float, float, int],
+                            eta=1e-4, xyz=2, subwf=None):
         start = datetime.now()
         print('---------- start get_shc_kmesh_fermi ----------')
         if self.ss_R is None:
@@ -333,20 +337,24 @@ class TBSystem:
             return
         kpts = kp.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
+        ef_min, ef_max, n_ef = ef_range[0], ef_range[1], ef_range[2]
         efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
         shc_efs = get_shc_kpar_fermi(self._ham_RT, self._r_RT, self._Rvec, self._ss_R, self._R_cartT,
-                                     self.num_wann, kpts, efs, eta, alpha_beta, gamma, subwf)
-        shc_efs /= self.area[alpha_beta]
+                                     self.num_wann, kpts, efs, eta, xyz, subwf=subwf)
+        shc_efs /= self.area[xyz]
         output = np.column_stack((efs, shc_efs))
         print('time used: %24.2f <-- get_shc_kmesh_fermi' % (datetime.now() - start).total_seconds())
         return output
 
-    def get_occ_dos_kmesh_fermi(self, kmesh, ef_min, ef_max, n_ef, eta=1e-4, lproj=False):
+    def get_occ_dos_kmesh_fermi(self, kmesh: tuple[int, int, int],
+                                ef_range: tuple[float, float, int],
+                                eta=1e-4, lproj=False):
         start = datetime.now()
         print('---------- start get_occ_dos_kmesh_fermi ----------')
         kpts = kp.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
+        ef_min, ef_max, n_ef = ef_range[0], ef_range[1], ef_range[2]
         efs = np.linspace(ef_min, ef_max, n_ef+1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
         if lproj:
@@ -377,3 +385,44 @@ class TBSystem:
         list_o_k = np.column_stack((kpts_len, morb))
         print('time used: %24.2f <-- get_totmorb_kpath' % (datetime.now() - start).total_seconds())
         return list_o_k
+
+    def berry_calc_fermi(self, tasks: str,
+                         kmesh: tuple[int, int, int],
+                         ef_range: tuple[float, float,int],
+                         eta=1e-4, xyz=2, subwf=None):
+        start = datetime.now()
+        print('---------- start berry_calc_fermi ----------')
+        _tasks = tasks.split('+')
+        itasks = []
+        for task in _tasks:
+            if task in Berry_Task.keys():
+                itasks.append(Berry_Task[task]['itask'])
+
+            else:
+                print('%s is not in Berry_Task' % task)
+        itasks = np.sort(itasks)
+        print('itasks:', itasks)
+        begin_idx = {}
+        count = 0
+        for it in itasks:
+            begin_idx[it] = count
+            count += 3
+        print('begin_idx:', begin_idx)
+        if self.ss_R is None and 10 in itasks:
+            print('spin data ss_R is missing.')
+            return
+        kpts = kp.get_kpts_mesh(kmesh)
+        print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
+        ef_min, ef_max, n_ef = ef_range[0], ef_range[1], ef_range[2]
+        efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
+        print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
+        out = berry_fermi(itasks, self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
+                                     self.num_wann, kpts, efs, eta, xyz=xyz, ss_R=self._ss_R, subwf=subwf)
+        for it in itasks:
+            if it == 0: # ahc
+                out[:, begin_idx[it]: begin_idx[it]+3] /= self.area
+            if it == 10: # shc
+                out[:, begin_idx[it]: begin_idx[it] + 3] /= self.area[xyz]
+        output = np.column_stack((efs, out))
+        print('time used: %24.2f <-- berry_calc_fermi' % (datetime.now() - start).total_seconds())
+        return output

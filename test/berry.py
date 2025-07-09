@@ -6,11 +6,11 @@ kpath = np.array([[0.00, 0.00, -0.50], [0.00, 0.00, 0.50]])
 # kpath = np.array([[-0.50, 0.00, 0.00], [0.50, 0.00, 0.00]])
 
 # MBT-sl3
-# path = 'MBT-sl3-soc-af001'
-
+path = 'MBT-sl3-soc-af001'
+# ef = 2.2445
 #MBT-sl6
-path = 'MBT-sl6-soc-af001'
-ef = 3.2791
+# path = 'MBT-sl6-soc-af001'
+# ef = 3.2791
 
 # AgRuO
 # path = 'AgRuO-soc'
@@ -23,22 +23,26 @@ ef = 3.2791
 # tbfile = os.path.join('..', 'tbdata', path, 'wannier90_tb.dat')
 npzfile = os.path.join('..', 'tbdata', path + '-tb.npz')
 # tb = wanntb.TBSystem(tb_file=tbfile)
-# tb = wanntb.TBSystem(npz_file=npzfile)
+tb = wanntb.TBSystem(npz_file=npzfile)
 
 # MBT-sl3
-kmesh = 192
-# output = tb.get_ahc_kmesh_fermi((kmesh,kmesh,1), 2.0200, 2.4200, 200, eta=1e-3)
-# np.savetxt(path + '-ahc-k%d.txt' % kmesh, output, fmt='%16.6f')
-# output = tb.get_ahc_kmesh_fermi((kmesh,kmesh,1), 2.0200, 2.4200, 200, eta=1e-3, lnew=True)
-# np.savetxt(path + '-ahc-k%d-2.txt' % kmesh, output, fmt='%16.6f')
+kmesh = 384
+ef_range = (2.200, 2.350, 300)
+output = tb.berry_calc_fermi('ahc+shc', (kmesh,kmesh,1), ef_range, eta=1e-3, xyz=2)
+np.savetxt(path + '-berry-k%d.txt' % kmesh, output, fmt='%16.6f')
+
+output = tb.get_ahc_kmesh_fermi((kmesh,kmesh,1), ef_range, eta=1e-3)
+np.savetxt(path + '-ahc-k%d.txt' % kmesh, output, fmt='%16.6f')
+
 # subwf0 = np.array([1,2,3,4,5,31,32,33,55,56,57,67,68,69,97,98,99,103,104,105,133,134,135], dtype=int)
-subwf0 = np.r_[0:5, 30:33, 54:57, 66:69, 96:99, 102:105, 132:135]
-subwf = np.append(subwf0, subwf0+138)
+# subwf0 = np.r_[0:5, 30:33, 54:57, 66:69, 96:99, 102:105, 132:135]
+# subwf = np.append(subwf0, subwf0+138)
 # subwf -= 1
-print(subwf)
-# output = tb.get_shc_kmesh_fermi((kmesh, kmesh, 1), 3.15, 3.40, 250,
-#                                 alpha_beta=2, gamma=2, eta=1e-3, subwf=subwf)
-# np.savetxt(path + '-shc-k%d-1.txt' % kmesh, output, fmt='%16.6f')
+# print(subwf)
+
+output = tb.get_shc_kmesh_fermi((kmesh, kmesh, 1), ef_range, eta=1e-3, xyz=2)
+np.savetxt(path + '-shc-k%d.txt' % kmesh, output, fmt='%16.6f')
+
 # bilayer MnSe
 # kmesh = 192
 # subwf = np.array([1,2,3,4,5,11,12,13,17,18,19,20,21,27,28,29], dtype=int)
