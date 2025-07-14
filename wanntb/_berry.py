@@ -163,6 +163,7 @@ def _get_f_omega(Ah_k, f, num_wann):
     fo_k *= -2.0 * f
     return fo_k
 
+@njit(nogil=True)
 def _get_f_omega_sub(Ah_ak, Ah_bk, f, num_wann):
     fo_k = np.zeros((3, num_wann), dtype=np.float64)
     g = 1.0 - f
@@ -172,6 +173,16 @@ def _get_f_omega_sub(Ah_ak, Ah_bk, f, num_wann):
     fo_k *= -2.0 * f
     return fo_k
 
+@njit(nogil=True)
+def _get_f_omega_mat(Ah_ak, Ah_bk, f, num_wann):
+    fo_k = np.zeros((3, num_wann, num_wann), dtype=np.float64)
+    g = 1.0 - f
+    for i in range(3):
+        for m_ in range(num_wann):
+            for n_ in range(num_wann):
+                fo_k[i, m_, n_] = np.sum(g * (Ah_ak[I_A[i], m_, :] * Ah_bk[I_B[i], :, n_]).imag)
+    fo_k *= -2.0 * f
+    return fo_k
 
 @njit(nogil=True)
 def _get_f_spin_omega(vh_b, js2, inv2, f, num_wann):
@@ -347,27 +358,27 @@ def get_shc_kpar_fermi(ham_R, r_mat_R, R_vec, ss_R, R_cartT,
 
 @njit(parallel=True, nogil=True)
 def get_morb_berry_kpar_kpath(ham_R, r_mat_R, R_vec, R_cartT,
-                              num_wann, kpts, ef, eta, alpha_beta):
+                              num_wann, kpts, ef, eta, xyz):
     fac = 1e-8 / Hbar_ / Mu_B_
     nkpts = kpts.shape[0]
     morb_k = np.zeros(nkpts, dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
         oo, eig = _get_berrycurv_f_eig_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt, ef, eta, mode=0)
-        morb_k[ik] = np.sum(oo[alpha_beta, :] * (ef - eig))
+        morb_k[ik] = np.sum(oo[xyz, :] * (ef - eig))
     return morb_k * fac
 
 
 @njit(parallel=True, nogil=True)
 def get_morb_berry_kpar(ham_R, r_mat_R, R_vec, R_cartT,
-                        num_wann, kpts, ef, eta, alpha_beta):
+                        num_wann, kpts, ef, eta, xyz):
     fac = 1e-8 / Hbar_ / Mu_B_
     nkpts = kpts.shape[0]
     morb_k = np.zeros(nkpts, dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
         oo, eig = _get_berrycurv_f_eig_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt, ef, eta, mode=0)
-        morb_k[ik] = np.sum(oo[alpha_beta, :] * (ef - eig))
+        morb_k[ik] = np.sum(oo[xyz, :] * (ef - eig))
     return np.sum(morb_k) * fac / nkpts
 
 
@@ -411,16 +422,16 @@ def get_deltaU_h(ham_R, R_vec, R_cartT, num_wann, kpt, uu, q_frac, q, order=2):
     return duu
 
 @njit(nogil=True)
-def _get_morb1_morb2_k(eig, num_wann, ef, duu, fo_k, f, alpha_beta):
+def _get_morb1_morb2_k(eig, num_wann, ef, duu, fo_k, f, xyz):
     g = 1.0 - f
     # f.(ef - eig).Omega
-    morb2 = fo_k[alpha_beta] * (ef - eig)
+    morb2 = fo_k[xyz] * (ef - eig)
     # -0.5.f.eig.Omega
-    morb1_2 = fo_k[alpha_beta] * 0.5 * eig
+    morb1_2 = fo_k[xyz] * 0.5 * eig
     # f.<duu_n_a|H|duu_n_b> = f.<duu_n_a|uu_m>e_n<uu_m|duu_n_b>
     morb1_1 = np.zeros(num_wann, dtype=np.float64)
     for n_ in range(num_wann):
-        morb1_1[n_] = np.sum((duu[I_A[alpha_beta], :, n_].conj() * duu[I_B[alpha_beta], :, n_]).imag * eig * g)
+        morb1_1[n_] = np.sum((duu[I_A[xyz], :, n_].conj() * duu[I_B[xyz], :, n_]).imag * eig * g)
     morb1 = morb1_2 + morb1_1 * f
     return morb1, morb2
 
@@ -508,7 +519,7 @@ def berry_kpath(itasks, ham_R, r_mat_R, R_vec, R_cartT,
     ahc_ks = np.zeros((nkpts, 3), dtype=np.float64) if 0 in itasks else None
     # sigma^x_ab, sigma^y_ab sigma^z_ab
     shc_ks = np.zeros((nkpts, 3), dtype=np.float64) if 10 in itasks else None
-    # morb1, morb2, morb3
+    # morb1, morb2, morb
     morb_ks = np.zeros((nkpts, 3), dtype=np.float64) if 20 in itasks else None
     for ik in prange(nkpts):
         kpt = kpts[ik]
@@ -529,15 +540,20 @@ def berry_kpath(itasks, ham_R, r_mat_R, R_vec, R_cartT,
             morb1, morb2 = _get_morb_k(eig, num_wann, ef, Ah_ak, Ah_bk, of_k, f, xyz)
             morb_ks[ik, 0] = np.sum(morb1)
             morb_ks[ik, 1] = np.sum(morb2)
+    count = itasks.shape[0] * 3
+    out = np.zeros((nkpts, count), dtype=np.float64)
+    count = 0
     if 0 in itasks:
-        ahc_ks *= fac1
+        out[:, count:count+3] = ahc_ks * fac1
+        count += 3
     if 10 in itasks:
-        shc_ks *= fac1
+        out[:, count:count + 3] = shc_ks * fac1
+        count += 3
     if 20 in itasks:
         morb_ks[:, 2] = morb_ks[:, 0] + morb_ks[:, 1]
-        morb_ks *= fac2
-
-    return ahc_ks, shc_ks, morb_ks
+        out[:, count:count + 3] = morb_ks * fac2
+        count += 3
+    return out
 
 @njit(parallel=True, nogil=True)
 def berry_fermi(itasks, ham_R, r_mat_R, R_vec, R_cartT,
