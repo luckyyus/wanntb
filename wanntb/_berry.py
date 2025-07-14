@@ -181,7 +181,7 @@ def _get_f_omega_mat(Ah_ak, Ah_bk, f, num_wann):
         for m_ in range(num_wann):
             for n_ in range(num_wann):
                 fo_k[i, m_, n_] = np.sum(g * (Ah_ak[I_A[i], m_, :] * Ah_bk[I_B[i], :, n_]).imag)
-    fo_k *= -2.0 * f
+    fo_k *= -2.0 * f #to 陈宝风：你检查一下这样得到的矩阵的厄米性，如果不行就这个f不乘
     return fo_k
 
 @njit(nogil=True)
