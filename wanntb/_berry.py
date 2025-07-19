@@ -190,7 +190,7 @@ def _get_f_spin_omega(vh_b, js2, inv2, f, num_wann):
     g = 1.0 - f
     for i in range(3):
         for n_ in range(num_wann):
-            fso_k[i, n_] = np.sum((g * js2[n_, :] * vh_b[:, n_] * inv2[n_, :]).imag)
+            fso_k[i, n_] = np.sum((g * js2[i, n_, :] * vh_b[:, n_] * inv2[n_, :]).imag)
     fso_k *= -2.0 * f
     return fso_k
 
