@@ -307,7 +307,7 @@ def fourier_R_to_k(mat_R, R_cartT, phase_fac, iout=[0]):
     @param phase_fac: 各个R的相因子
     @param iout: 输出选项tuple，0代表mat_k, 1~3代表xyz三个方向的dmat/dk
     """
-    n_rpt, num_wann, _ = mat_R.shape
+    num_wann = mat_R.shape[1]
     output = np.zeros((4, num_wann, num_wann), dtype=np.complex128)
     # output[0] = np.sum(mat_R * phase_fac, axis=2)
     # if 1 in iout:
@@ -331,7 +331,7 @@ def fourier_R_to_k(mat_R, R_cartT, phase_fac, iout=[0]):
 
 @njit(nogil=True)
 def fourier_R_to_k_vec3(vec_R, phase_fac):
-    n_rpt, _, num_wann, _ = vec_R.shape
+    num_wann = vec_R.shape[1]
     # oo_true = np.sum(vec_R * phase_fac, axis=3)
     oo_true = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
     for k in range(3):
@@ -344,7 +344,7 @@ def fourier_R_to_k_vec3(vec_R, phase_fac):
 
 @njit(nogil=True)
 def fourier_R_to_k_curl(vec_R, phase_fac, R_cartT):
-    n_rpt, _, num_wann, _ = vec_R.shape
+    num_wann = vec_R.shape[1]
     oo_curl = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
     # oo_curl[0] = np.sum((vec_R[2] * R_cartT[1] - vec_R[1] * R_cartT[2]) * phase_fac, axis=3) * 1j
     # oo_curl[1] = np.sum((vec_R[0] * R_cartT[2] - vec_R[2] * R_cartT[0]) * phase_fac, axis=3) * 1j
