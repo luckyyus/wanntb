@@ -22,7 +22,7 @@ print(tb.get_onsite_energy())
 
 kmesh = 384
 ef_range = (2.200, 2.350, 300)
-occ, dos = tb.get_occ_dos_kmesh_fermi((kmesh, kmesh, 1), ef_range, eta=1e-4, lproj=False)
+occ, dos = tb.get_occ_dos_fermi((kmesh, kmesh, 1), ef_range, eta=1e-4, lproj=False)
 
 np.savetxt(path + '-occ-k%d.txt' % kmesh, occ, fmt='%12.6f')
 np.savetxt(path + '-dos-k%d.txt' % kmesh, dos, fmt='%12.6f')

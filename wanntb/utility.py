@@ -1,6 +1,6 @@
 import numpy as np
 from numba import njit, prange
-from .constant import TwoPi, Eta_4, S_
+from .constant import TwoPi, Eta_4, S_, Berry_Task
 
 
 def get_list_index(item, li):
@@ -337,7 +337,7 @@ def fourier_R_to_k_vec3(vec_R, phase_fac):
     for k in range(3):
         for i in range(num_wann):
             for j in range(num_wann):
-                vec_Rkij = np.ascontiguousarray(vec_R[k, i, j])
+                vec_Rkij = vec_R[k, i, j]
                 oo_true[k, i, j] = np.sum(vec_Rkij * phase_fac)
     return oo_true
 
@@ -361,6 +361,29 @@ def fourier_R_to_k_curl(vec_R, phase_fac, R_cartT):
             oo_curl[2, i, j] = np.sum((R_cartT[0] * vec_ij_1
                                        - R_cartT[1] * vec_ij_0) * phase_fac) * 1j
     return oo_curl
+
+
+@njit(nogil=True)
+def get_deltaU(ham_R, R_vec, R_cartT, num_wann, kpt, uu, q_frac, q, order=2, lbloch=False):
+    # duu[idim, iproj, iband]
+    duu = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
+    if order == 4:
+        for i in range(3):
+            h1, eig1, uu1 = _ham_k_system(ham_R, R_vec, R_cartT, kpt - 2 * q_frac[i])
+            h2, eig2, uu2 = _ham_k_system(ham_R, R_vec, R_cartT, kpt - q_frac[i])
+            h3, eig3, uu3 = _ham_k_system(ham_R, R_vec, R_cartT, kpt + q_frac[i])
+            h4, eig4, uu4 = _ham_k_system(ham_R, R_vec, R_cartT, kpt + 2 * q_frac[i])
+            duu[i] = (uu1 - 8 * uu2 + 8 * uu3 - uu4) / (12 * q)
+    else:
+        for i in range(3):
+            h1, eig1, uu1 = _ham_k_system(ham_R, R_vec, R_cartT, kpt - q_frac[i])
+            h2, eig2, uu2 = _ham_k_system(ham_R, R_vec, R_cartT, kpt + q_frac[i])
+            duu[i] = (uu2 - uu1) / (2 * q)
+    if lbloch: # in the bloch space (else in the WF space)
+        for i in range(3):
+            duu[i] = uu.conj().T @ duu[i]
+    return duu
+
 
 @njit(nogil=True)
 def get_eig_da(eig, ham_da, uu, num_wann, eig_diff=1e-4):
@@ -466,7 +489,7 @@ def spin_w(gamma, num_wann, udud_order=False):
 
 
 @njit(nogil=True)
-def get_inv_e_d(eig, num_wann):
+def inv_e_d_r(eig, num_wann):
     """
     inv_e_d[m, n] = 1 / (e_n - e_m)
     """
@@ -478,6 +501,21 @@ def get_inv_e_d(eig, num_wann):
             e_d = eig[n_] - eig[m_]
             inv_e_d[m_, n_] = 1.0 / e_d if abs(e_d) > 1e-8 else 0.0
     return inv_e_d
+
+@njit(nogil=True)
+def inv_e_d_c(eig, num_wann, eta=1e-6):
+    """
+    inv_e_d[m, n] = 1 / (e_n - e_m + i eta)
+    """
+    inv_e_d = np.zeros((num_wann, num_wann), dtype=np.complex128)
+    for n_ in range(num_wann):
+        for m_ in range(num_wann):
+            if m_ == n_:
+                continue
+            e_d = eig[n_] - eig[m_] + 1j * eta
+            inv_e_d[m_, n_] = 1.0 / e_d # if abs(e_d) > 1e-8 else 0.0
+    return inv_e_d
+
 # @njit(parallel=True)
 # def sz_n(uu, num_wann: int):
 #     """
@@ -517,5 +555,19 @@ def get_carrier_kpar(ham_R, R_vec, R_vec_cart_T,
     return np.sum(list_o_k) / (nkpts * TwoPi * TwoPi)
 
 
-
-
+def get_itasks(tasks):
+    _tasks = tasks.split('+')
+    itasks = []
+    for task in _tasks:
+        if task in Berry_Task.keys():
+            itasks.append(Berry_Task[task]['itask'])
+        else:
+            print('%s is not in Berry_Task' % task)
+    itasks = np.sort(itasks)
+    # print('itasks:', itasks)
+    begin_idx = {}
+    count = 0
+    for it in itasks:
+        begin_idx[it] = count
+        count += 3
+    return itasks, begin_idx, count
