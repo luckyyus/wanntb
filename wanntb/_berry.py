@@ -45,8 +45,7 @@ def _get_Ah_ab_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt, subwf):
     return Ah_ak, Ah_bk, eig, uu
 
 @njit(nogil=True)
-def _get_js_Ahb_k(ham_R, r_mat_R, ss_R, R_vec, R_cartT,
-                           num_wann, kpt, xyz, subwf):
+def _get_js_Ahb_k(ham_R, r_mat_R, ss_R, R_vec, R_cartT, num_wann, kpt, eta, xyz, subwf):
     fac = fourier_phase_R_to_k(R_vec, kpt)
     ham_out = fourier_R_to_k(ham_R, R_cartT, fac, iout=[1, 2, 3])
     # A_bar^W_a[3, num_wann, num_wann] in units angst.
@@ -54,7 +53,7 @@ def _get_js_Ahb_k(ham_R, r_mat_R, ss_R, R_vec, R_cartT,
     sw = fourier_R_to_k_vec3(ss_R, fac)
     eig, uu = np.linalg.eigh(ham_out[0])
     # 1 / (E_n - E_m)
-    inv_e_d = inv_e_d_r(eig, num_wann)
+    inv_e_d = inv_e_d_c(eig, num_wann, eta)
     js_a = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
     Ah_a = unitary_trans(A_bar_k[I_A[xyz]], uu) + 1j * unitary_trans(ham_out[I_A[xyz] + 1], uu) * inv_e_d
     Ah_b = unitary_trans(A_bar_k[I_B[xyz]], uu) + 1j * unitary_trans(ham_out[I_B[xyz] + 1], uu) * inv_e_d
@@ -65,8 +64,7 @@ def _get_js_Ahb_k(ham_R, r_mat_R, ss_R, R_vec, R_cartT,
     return js_a, Ah_b, eig
 
 @njit(nogil=True)
-def _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, ss_R, R_vec, R_cartT,
-                           num_wann, kpt, eta, xyz, subwf):
+def _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, ss_R, R_vec, R_cartT, num_wann, kpt, eta, xyz, subwf):
     fac = fourier_phase_R_to_k(R_vec, kpt)
     ham_out = fourier_R_to_k(ham_R, R_cartT, fac, iout=[1, 2, 3])
     # A_bar^W_a[3, num_wann, num_wann] in units angst.
@@ -274,7 +272,7 @@ def _get_shc_f_efs_k(ham_R, r_mat_R, R_vec, ss_R, R_cartT,
         v_b, jsd, inv2, eig = _get_vh_jsd_inv2_eig_k(ham_R, r_mat_R, ss_R, R_vec, R_cartT, num_wann, kpt,
                                                  eta, xyz, subwf)
     else:
-        js_a, Ah_b, eig = _get_js_Ahb_k(ham_R, r_mat_R, ss_R, R_vec, R_cartT, num_wann, kpt, xyz, subwf)
+        js_a, Ah_b, eig = _get_js_Ahb_k(ham_R, r_mat_R, ss_R, R_vec, R_cartT, num_wann, kpt, eta, xyz, subwf)
     ofg_k = np.zeros((n_ef, 3, num_wann), dtype=np.float64)
     for i in range(n_ef):
         ef = efs[i]
