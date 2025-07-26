@@ -91,26 +91,50 @@ The columns represent: mu, alpha, alpha_qvd, qvs, beta, ratio
 
 ### Berry curvature related calculations
 
-#### Calculate AHC in terms of Fermi energies
-```
-ef_begin = 2.02
-ef_end = 2.42
-num_ef = 400
-tb.get_ahc_kmesh_fermi((kmesh,kmesh,1), 2.ef_end, 2.4200, num_ef, eta=5e-4)
-```
-The current computational approach for AHC is not efficient 
-because the existing algorithm first calculates Berry Curvature and then sums over all occupied states, 
-resulting in significant computational redundancy.
+The function for berry curvature related calculations is `berry_calc_fermi` and `berry_calc_kpath`, 
+which correspond to the calculated quantity as a function of Fermi energy and along a $k$-path respectively.
 
-#### Calculate the berry curvature component of orbit moment along a $k$-path
+#### The basic usage of `berry_calc_fermi`
+
+Calculate berry curvature related quantities as a function of Fermi energy.
 ```
+kmesh = (64, 64, 64)
+e_min = 1.0
+e_max = 11.0
+n_ef = 2000
+ef_range = (e_min, e_max, n_ef)
+tb.berry_calc_fermi('ahc+shc+morb', kmesh, ef_range, eta=1e-4, xyz=2, subwf=None)
+```
+Here the first argument `tasks` can be a combination of
+- `ahc` -- anomalous Hall conductivity (**AHC**) in units $e^2/h$, 
+- `shc` -- spin Hall conductivity (**SHC**) in units $(\hbar/2e) e^2/h$
+- `morb` -- orbit moment (**Morb**) in units $\mu_B$ per u.c. 
+
+with the connector `+`.
+
+`xyz=0,1,2` corresponds to 
+- $\alpha\beta=yz, zx, xy$ for **SHC** calculations 
+- orbit moment direction $\gamma$ for **Morb** calculations.
+
+The output is a table with the first column of Fermi energies.
+Every three columns thereafter correspond to one type of the calculated quantity:
+- For **AHC** $\sigma^A_{yz}$, $\sigma^A_{zx}$, $\sigma^A_{xy}$ is calculated.
+- For **SHC** $\sigma^{S(x)}_\alpha\beta$, $\sigma^{S(y)}_\alpha\beta$, $\sigma^{S(z)}_\alpha\beta$ is calculated 
+(so that argument `xyz` is required).
+- For **Morb** $M^{\gamma}_{L1}$ (the local part), 
+$M^{\gamma}_{L2}$ (the itinerant  part) 
+and $M^{\gamma}_{L}=M^{\gamma}_{L1}+M^{\gamma}_{L2}$ (total) is calculated.
+
+#### The basic usage of `berry_calc_kpath`
+
+Calculate berry curvature related quantities along a $k$-path.
+```
+ef = 2.000 # one Fermi energy
 kpath = np.array([[0.00, 0.00, -0.50], [0.00, 0.00, 0.50]])
-ef = 5.00
-output = tb.get_morb_berry_kpath(ef, kpath, nkpts_path=500, direction=3, eta=1e-2)
-
+berry_calc_kpath('ahc+shc+morb', ef, kpath, nkpts_path=100, eta=1e-4, xyz=2, subwf=None)
 ```
-The first column is the 1D k-point length in units angst.$^{-1}$.
-The second column is the orbit moment in units $\mu_B$.
+The output is similar to `berry_calc_fermi` 
+while the first column in the output of `berry_calc_kpath` is a $k$-path of the 1D k-point length in units Angst.$^{-1}$.
 
 
 ## To do list

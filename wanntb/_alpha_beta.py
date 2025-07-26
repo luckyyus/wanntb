@@ -113,11 +113,9 @@ def get_alpha_beta_kpar(ham_R, R_vec, R_vec_cart_T,
     o_k = np.zeros((nkpts, 3), dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
-        ham_k, eig, eig_da, uu = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T,
-                                                  num_wann, kpt, direction)
+        ham_k, eig, eig_da, uu = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T, kpt, direction)
         # k + q
-        ham_q, eig_q, eig_q_da, uu_q = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T,
-                                                        num_wann, kpt + q_frac, direction)
+        ham_q, eig_q, eig_q_da, uu_q = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T, kpt + q_frac, direction)
         o_k[ik, :] = _get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q,
                                        num_wann, ef, eta, q)
         if ladpt and np.abs(o_k[ik, 2]) > adpt_qvs:
@@ -125,11 +123,9 @@ def get_alpha_beta_kpar(ham_R, R_vec, R_vec_cart_T,
             o_adpt = np.zeros((nadpt, 3), dtype=np.float64)
             for iik in prange(nadpt):
                 _kpt = _adpt_kpts[iik]
-                ham_k, eig, eig_da, uu = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T,
-                                                          num_wann, _kpt, direction)
+                ham_k, eig, eig_da, uu = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T, _kpt, direction)
                 # k + q
-                ham_q, eig_q, eig_q_da, uu_q = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T,
-                                                                num_wann, _kpt + q_frac, direction)
+                ham_q, eig_q, eig_q_da, uu_q = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T, _kpt + q_frac, direction)
                 o_adpt[iik, :] = _get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q,
                                                num_wann, ef, eta, q)
             o_k[ik, :] = np.sum(o_adpt, axis=0) / nadpt
@@ -146,11 +142,9 @@ def get_alpha_beta_efs_kpar(ham_R, R_vec, R_vec_cart_T,
     o_ek = np.zeros((nkpts, n_ef, 3), dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
-        ham_k, eig, eig_da, uu = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T,
-                                                  num_wann, kpt, direction)
+        ham_k, eig, eig_da, uu = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T, kpt, direction)
         # k + q
-        ham_q, eig_q, eig_q_da, uu_q = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T,
-                                                        num_wann, kpt + q_frac, direction)
+        ham_q, eig_q, eig_q_da, uu_q = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T, kpt + q_frac, direction)
         _ladpt_k = False
         for ie in range(n_ef):
             ef = efs[ie]
@@ -163,11 +157,9 @@ def get_alpha_beta_efs_kpar(ham_R, R_vec, R_vec_cart_T,
             o_adpt = np.zeros((nadpt, n_ef, 3), dtype=np.float64)
             for iik in prange(nadpt):
                 _kpt = _adpt_kpts[iik]
-                ham_k, eig, eig_da, uu = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T,
-                                                          num_wann, _kpt, direction)
+                ham_k, eig, eig_da, uu = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T, _kpt, direction)
                 # k + q
-                ham_q, eig_q, eig_q_da, uu_q = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T,
-                                                                num_wann, _kpt + q_frac, direction)
+                ham_q, eig_q, eig_q_da, uu_q = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T, _kpt + q_frac, direction)
                 for ie in range(n_ef):
                     ef = efs[ie]
                     o_adpt[iik, ie, :] = _get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q,
@@ -183,11 +175,9 @@ def get_alpha_beta_kpar_kpath(ham_R, R_vec, R_vec_cart_T,
     o_k = np.zeros((nkpts, 6), dtype=float)
     for ik in prange(nkpts):
         kpt = kpts[ik]
-        ham_k, eig, eig_da, uu = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T,
-                                                  num_wann, kpt, direction)
+        ham_k, eig, eig_da, uu = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T, kpt, direction)
         # k + q
-        ham_q, eig_q, eig_q_da, uu_q = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T,
-                                                        num_wann, kpt + q_frac, direction)
+        ham_q, eig_q, eig_q_da, uu_q = _ham_k_da_system(ham_R, R_vec, R_vec_cart_T, kpt + q_frac, direction)
         o_k[ik, 0:3] = _get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q,
                                          num_wann, ef, eta, q)
         o_k[ik, 3:6] = _get_alpha_beta_inter_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q,

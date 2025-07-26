@@ -346,9 +346,6 @@ def fourier_R_to_k_vec3(vec_R, phase_fac):
 def fourier_R_to_k_curl(vec_R, phase_fac, R_cartT):
     num_wann = vec_R.shape[1]
     oo_curl = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
-    # oo_curl[0] = np.sum((vec_R[2] * R_cartT[1] - vec_R[1] * R_cartT[2]) * phase_fac, axis=3) * 1j
-    # oo_curl[1] = np.sum((vec_R[0] * R_cartT[2] - vec_R[2] * R_cartT[0]) * phase_fac, axis=3) * 1j
-    # oo_curl[2] = np.sum((vec_R[1] * R_cartT[0] - vec_R[0] * R_cartT[1]) * phase_fac, axis=3) * 1j
     for i in range(num_wann):
         for j in range(num_wann):
             vec_ij_0 = vec_R[0, i, j]
@@ -386,7 +383,8 @@ def get_deltaU(ham_R, R_vec, R_cartT, num_wann, kpt, uu, q_frac, q, order=2, lbl
 
 
 @njit(nogil=True)
-def get_eig_da(eig, ham_da, uu, num_wann, eig_diff=1e-4):
+def get_eig_da(eig, ham_da, uu, eig_diff=1e-4):
+    num_wann = eig.shape[0]
     eig_da = np.zeros(num_wann, dtype=np.float64)
     ham_bar_da = unitary_trans(ham_da, uu)
     i = 0
@@ -411,13 +409,12 @@ def get_eig_da(eig, ham_da, uu, num_wann, eig_diff=1e-4):
 
 
 @njit(nogil=True)
-def _ham_k_da_system(ham_R, R_vec, R_cartT, num_wann, kpt, direction):
+def _ham_k_da_system(ham_R, R_vec, R_cartT, kpt, direction):
     """
     计算一个k点的哈密顿量、本征值、征值随k的某个方向的导数和本征态。
     @param ham_R: R空间的紧束缚哈密顿量
     @param R_vec: R格点坐标
-    @param R_vec_cart_T: R格点的xyz坐标，数组排列转置
-    @param num_wann: WF空间大小
+    @param R_cartT: R格点的xyz坐标，数组排列转置
     @param direction: 方向，123分别代表xyz
     @param kpt: k点坐标，倒格矢表象
     @return: k空间哈密顿量，本征值，本征值随k的导数，本征态
@@ -426,16 +423,19 @@ def _ham_k_da_system(ham_R, R_vec, R_cartT, num_wann, kpt, direction):
     out = fourier_R_to_k(ham_R, R_cartT, fac, iout=[direction])
     ham_k, ham_k_da = out[0], out[direction]
     eig, uu = np.linalg.eigh(ham_k)
-    eig_da = get_eig_da(eig, ham_k_da, uu, num_wann)
+    eig_da = get_eig_da(eig, ham_k_da, uu)
     return ham_k, eig, eig_da, uu
-
-# def get_spin_splitting(ham, num_wann):
-#     onsite = np.diagonal(ham).real
-#     return (- onsite[0:num_wann//2] + onsite[num_wann//2:num_wann]) / 2
-
 
 @njit(nogil=True)
 def _ham_k_system(ham_R, R_vec, R_cartT, kpt):
+    """
+    计算一个k点的哈密顿量、本征值和本征态。
+    @param ham_R: R空间的紧束缚哈密顿量
+    @param R_vec: R格点坐标
+    @param R_cartT: R格点的xyz坐标，数组排列转置
+    @param kpt: k点坐标，倒格矢表象
+    @return: k空间哈密顿量、本征值、本征态
+    """
     fac = fourier_phase_R_to_k(R_vec, kpt)
     ham_k = fourier_R_to_k(ham_R, R_cartT, fac, iout=[5])[0]
     eig, uu = np.linalg.eigh(ham_k)
@@ -474,6 +474,9 @@ def occ_fermi(eig, ef, eta):
 
 @njit(nogil=True)
 def dos_fermi(eig, ef, eta):
+    """
+    dos for eigenvalues: N(n) = - \partial f_n/ \partial e (e=e_f)
+    """
     fac = (eig - ef) / eta
     return 1.0 / (np.exp(fac) + 1) / (1 + np.exp(-fac)) / eta
 
@@ -508,13 +511,14 @@ def inv_e_d_c(eig, num_wann, eta=1e-6):
     inv_e_d[m, n] = 1 / (e_n - e_m + i eta)
     """
     inv_e_d = np.zeros((num_wann, num_wann), dtype=np.complex128)
-    for n_ in range(num_wann):
-        for m_ in range(num_wann):
-            if m_ == n_:
-                continue
-            e_d = eig[n_] - eig[m_] + 1j * eta
-            inv_e_d[m_, n_] = 1.0 / e_d # if abs(e_d) > 1e-8 else 0.0
-    return inv_e_d
+    e_d = np.zeros((num_wann, num_wann), dtype=np.float64)
+    for m_ in range(num_wann):
+        for n_ in range(num_wann):
+            # if m_ == n_:
+            #     continue
+            e_d[m_, n_] = eig[n_] - eig[m_]
+            inv_e_d[m_, n_] = 1.0 / (e_d[m_, n_] + 1j * eta) # if abs(e_d) > 1e-8 else 0.0
+    return inv_e_d, e_d
 
 # @njit(parallel=True)
 # def sz_n(uu, num_wann: int):

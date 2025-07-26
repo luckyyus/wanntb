@@ -4,8 +4,9 @@ from . import kpoints as kp
 from . import utility as ut
 from .constant import Cart, TwoPi, Hbar_
 from ._dos import get_occ_dos_kpar, get_occ_dos_proj_kpar
-from ._berry import get_berrycurv_kpar_kpath, get_shc_kpar_fermi, berry_fermi, berry_kpath
+from ._berry import get_berrycurv_kpar_kpath, berry_fermi, berry_kpath
 from ._alpha_beta import get_alpha_beta_kpar, get_alpha_beta_kpar_kpath, get_alpha_beta_efs_kpar
+from . import _old as od
 
 
 # spec = [
@@ -150,7 +151,7 @@ class TBSystem:
         out = ut.fourier_R_to_k(self._ham_RT, self._R_cartT, fac, iout=[0, direction])
         ham_k, ham_k_da = out[0], out[direction]
         eig, uu = np.linalg.eigh(ham_k)
-        eig_da = ut.get_eig_da(eig, ham_k_da, uu, self.num_wann)
+        eig_da = ut.get_eig_da(eig, ham_k_da, uu)
         return eig, eig_da, np.diagonal(ut.unitary_trans(ham_k_da, uu)).real
 
     def output_bands_kpath(self, kpath, nkpts_path=100, filename='bands-debug.txt', spin=True):
@@ -274,7 +275,7 @@ class TBSystem:
         print('time used: %24.2f <-- get_carrier' % (datetime.now() - start).total_seconds())
         return sum_o
 
-    def get_berrycurv_kpath(self, ef, kpath, nkpts_path=100, eta=1e-4, mode=0, q=0.0):
+    def old_berrycurv_kpath(self, ef, kpath, nkpts_path=100, eta=1e-4, mode=0, q=0.0):
         start = datetime.now()
         print('---------- start get_berrycurv_kpath ----------')
         kpts, kpts_len = kp.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
@@ -304,9 +305,9 @@ class TBSystem:
     #     print('time used: %24.2f <-- get_ahc_kmesh_fermi' % (datetime.now() - start).total_seconds())
     #     return output
 
-    def get_shc_fermi(self, kmesh: tuple[int, int, int],
+    def old_shc_fermi(self, kmesh: tuple[int, int, int],
                       ef_range: tuple[float, float, int],
-                      eta=1e-4, xyz=2, subwf=None, mode=0):
+                      eta=1e-4, xyz=2, subwf=None):
         start = datetime.now()
         print('---------- start get_shc_kmesh_fermi ----------')
         if self.ss_R is None:
@@ -317,8 +318,8 @@ class TBSystem:
         ef_min, ef_max, n_ef = ef_range[0], ef_range[1], ef_range[2]
         efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
-        shc_efs = get_shc_kpar_fermi(self._ham_RT, self._r_RT, self._Rvec, self._ss_R, self._R_cartT,
-                                     self.num_wann, kpts, efs, eta, xyz, subwf=subwf, mode=mode)
+        shc_efs = od.get_shc_kpar_fermi(self._ham_RT, self._r_RT, self._Rvec, self._ss_R, self._R_cartT,
+                                     self.num_wann, kpts, efs, eta, xyz, subwf=subwf)
         shc_efs /= self.area[xyz]
         output = np.column_stack((efs, shc_efs))
         print('time used: %24.2f <-- get_shc_kmesh_fermi' % (datetime.now() - start).total_seconds())
@@ -348,7 +349,6 @@ class TBSystem:
             out_dos = np.column_stack((efs, dos_efs))
         print('time used: %24.2f <-- get_occ_dos_kmesh_fermi' % (datetime.now() - start).total_seconds())
         return out_occ, out_dos
-
 
     def berry_calc_fermi(self, tasks: str,
                          kmesh: tuple[int, int, int],
