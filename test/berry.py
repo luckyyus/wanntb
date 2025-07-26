@@ -5,8 +5,11 @@ import wanntb
 kpath = np.array([[0.00, 0.00, -0.50], [0.00, 0.00, 0.50]])
 # kpath = np.array([[-0.50, 0.00, 0.00], [0.50, 0.00, 0.00]])
 
+# MBT-sl2
+path = 'MBT-sl2-soc-af001'
+# ef = 1.442
 # MBT-sl3
-path = 'MBT-sl3-soc-af001'
+# path = 'MBT-sl2-soc-af001'
 # ef = 2.2445
 #MBT-sl6
 # path = 'MBT-sl6-soc-af001'
@@ -25,11 +28,15 @@ npzfile = os.path.join('..', 'tbdata', path + '-tb.npz')
 # tb = wanntb.TBSystem(tb_file=tbfile)
 tb = wanntb.TBSystem(npz_file=npzfile)
 
-# MBT-sl3
-kmesh = 192
-ef_range = (2.200, 2.350, 300)
-output = tb.berry_calc_fermi('shc', (kmesh,kmesh,1), ef_range, eta=1e-3, xyz=2)
-np.savetxt(path + '-berry-k%d.txt' % kmesh, output, fmt='%16.6f')
+# MBT
+ks = 384
+kmesh = (ks, ks, 1)
+#sl2
+ef_range = (1.300, 2.600, 300)
+#sl3
+# ef_range = (2.100, 2.400, 300)
+output = tb.berry_calc_fermi('ahc+shc+morb', kmesh, ef_range, eta=1e-3, xyz=2)
+np.savetxt(path + '-berry-k%d.txt' % ks, output, fmt='%16.6f')
 
 # output = tb.get_ahc_kmesh_fermi((kmesh,kmesh,1), ef_range, eta=1e-3)
 # np.savetxt(path + '-ahc-k%d.txt' % kmesh, output, fmt='%16.6f')
@@ -39,10 +46,10 @@ np.savetxt(path + '-berry-k%d.txt' % kmesh, output, fmt='%16.6f')
 # subwf = np.append(subwf0, subwf0+138)
 # subwf -= 1
 # print(subwf)
-output = tb.get_shc_fermi((kmesh, kmesh, 1), ef_range, eta=1e-3, xyz=2, mode=0)
-np.savetxt(path + '-shc-0-k%d.txt' % kmesh, output, fmt='%16.6f')
-output = tb.get_shc_fermi((kmesh, kmesh, 1), ef_range, eta=1e-3, xyz=2, mode=1)
-np.savetxt(path + '-shc-1-k%d.txt' % kmesh, output, fmt='%16.6f')
+output = tb.get_shc_fermi(kmesh, ef_range, eta=1e-3, xyz=2, mode=0)
+np.savetxt(path + '-shc-0-k%d.txt' % ks, output, fmt='%16.6f')
+output = tb.get_shc_fermi(kmesh, ef_range, eta=1e-3, xyz=2, mode=1)
+np.savetxt(path + '-shc-1-k%d.txt' % ks, output, fmt='%16.6f')
 
 
 # bilayer MnSe

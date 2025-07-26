@@ -17,10 +17,15 @@ Get the TB object of a WF based tight-binding Hamiltonian:
 ```
 tb = wanntb.TBSystem(tb_file='wannier90_tb.dat')
 ```
+Load the spin file ('wannier90_SS_R.dat') to the TB object:
+```
+tb.load_spins(ss_file='wannier90_SS_R.dat')
+```
 Store the TB system into a numpy npz binary file:
 ```
 tb.output_npz(seedname) # the file [seedname]-tb.npz is created
 ```
+If spins has been loaded, .npz file contains spin data.
 
 Get the TB object from a npz binary file stored by output_npz:
 ```
@@ -52,7 +57,8 @@ kmesh = (64, 64, 64)
 e_min = 1.0
 e_max = 11.0
 n_ef = 2000
-occ, dos = tb.get_occ_dos_kmesh_fermi(kmesh, e_min, e_max, 2000, eta=1e-4, lproj=False)
+ef_range = (e_min, e_max, n_ef)
+occ, dos = tb.get_occ_dos_kmesh_fermi(kmesh, ef_range, eta=1e-4, lproj=False)
 # if lproj=True, the PDOS for each WF will be calculated
 ```
 `occ` and `doc` are the occupancy and DOS as a function of energies. 

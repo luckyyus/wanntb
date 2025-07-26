@@ -2,8 +2,11 @@ import numpy as np
 import os
 import wanntb
 
+# MBT-sl2
+path = 'MBT-sl2-soc-af001'
+
 # MBT-sl3
-path = 'MBT-sl3-soc-af001'
+# path = 'MBT-sl3-soc-af001'
 
 # AgRuO
 # path = 'AgRuO-soc'
@@ -21,8 +24,8 @@ print(tb.get_onsite_energy())
 # occ, dos = tb.get_occ_dos_kmesh_fermi((kmesh, kmesh, kmesh), 3.0, 8.0, 1000, eta=1e-2)
 
 kmesh = 384
-ef_range = (2.200, 2.350, 300)
-occ, dos = tb.get_occ_dos_fermi((kmesh, kmesh, 1), ef_range, eta=1e-4, lproj=False)
+ef_range = (1.000, 2.000, 1000)
+occ, dos = tb.get_occ_dos_fermi((kmesh, kmesh, 1), ef_range, eta=1e-3, lproj=False)
 
 np.savetxt(path + '-occ-k%d.txt' % kmesh, occ, fmt='%12.6f')
 np.savetxt(path + '-dos-k%d.txt' % kmesh, dos, fmt='%12.6f')
