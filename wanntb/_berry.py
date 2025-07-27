@@ -271,12 +271,15 @@ def berry_kpath(itasks, ham_R, r_mat_R, R_vec, R_cartT,
     fac1 = -TwoPi
     fac2 = 1e-8 / Hbar_ / Mu_B_
     nkpts = kpts.shape[0]
-    # sigma_x, sigma_y, sigma_z
-    ahc_ks = np.zeros((nkpts, 3), dtype=np.float64) if 0 in itasks else None
-    # sigma^x_ab, sigma^y_ab sigma^z_ab
-    shc_ks = np.zeros((nkpts, 3), dtype=np.float64) if 10 in itasks else None
-    # morb1, morb2, morb
-    morb_ks = np.zeros((nkpts, 3), dtype=np.float64) if 20 in itasks else None
+    if 0 in itasks:
+        # sigma_x, sigma_y, sigma_z
+        ahc_ks = np.zeros((nkpts, 3), dtype=np.float64)
+    if 10 in itasks:
+        # sigma^x_ab, sigma^y_ab sigma^z_ab
+        shc_ks = np.zeros((nkpts, 3), dtype=np.float64)
+    if 20 in itasks:
+        # morb1, morb2, morb
+        morb_ks = np.zeros((nkpts, 3), dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
         eig, Ah_bk, Ah_ak, js = _berry_Ah_k(itasks, ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, xyz, ss_R,
@@ -322,12 +325,15 @@ def berry_fermi(itasks, ham_R, r_mat_R, R_vec, R_cartT,
     fac2 = 1e-8 / Hbar_ / Mu_B_
     nkpts = kpts.shape[0]
     n_ef = efs.shape[0]
-    # sigma_x, sigma_y, sigma_z
-    ahc_ks = np.zeros((n_ef, 3, nkpts), dtype=np.float64) if 0 in itasks else None
-    # sigma^x_ab, sigma^y_ab sigma^z_ab
-    shc_ks = np.zeros((n_ef, 3, nkpts), dtype=np.float64) if 10 in itasks else None
-    # morb1, morb2, morb
-    morb_ks = np.zeros((n_ef, 2, nkpts), dtype=np.float64) if 20 in itasks else None
+    if 0 in itasks:
+        # sigma_x, sigma_y, sigma_z
+        ahc_ks = np.zeros((n_ef, 3, nkpts), dtype=np.float64)
+    if 10 in itasks:
+        # sigma^x_ab, sigma^y_ab sigma^z_ab
+        shc_ks = np.zeros((n_ef, 3, nkpts), dtype=np.float64)
+    if 20 in itasks:
+        # morb1, morb2, morb
+        morb_ks = np.zeros((n_ef, 2, nkpts), dtype=np.float64)
     for ik in prange(nkpts):
         kpt = kpts[ik]
         eig, Ah_ak, Ah_bk, js_ak = _berry_Ah_k(itasks, ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, xyz, ss_R,
