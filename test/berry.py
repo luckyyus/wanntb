@@ -29,14 +29,16 @@ npzfile = os.path.join('..', 'tbdata', path + '-tb.npz')
 tb = wanntb.TBSystem(npz_file=npzfile)
 
 # MBT
-ks = 384
+ks = 192
 kmesh = (ks, ks, 1)
 #sl2
 # ef_range = (1.300, 2.600, 300)
 #sl3
 ef_range = (2.100, 2.400, 300)
-output = tb.berry_calc_fermi('ahc+shc', kmesh, ef_range, eta=1e-3, xyz=2)
-np.savetxt(path + '-berry-k%d.txt' % ks, output, fmt='%16.6f')
+subwf0 = np.r_[0:5]
+subwf = np.append(subwf0, subwf0+69)
+output = tb.berry_calc_fermi('ahc+shc', kmesh, ef_range, eta=1e-3, xyz=2, subwf=subwf)
+np.savetxt(path + '-berry-k%d-sub1.txt' % ks, output, fmt='%16.6f')
 
 # output = tb.get_ahc_kmesh_fermi((kmesh,kmesh,1), ef_range, eta=1e-3)
 # np.savetxt(path + '-ahc-k%d.txt' % kmesh, output, fmt='%16.6f')

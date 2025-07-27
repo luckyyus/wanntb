@@ -4,7 +4,7 @@ from . import kpoints as kp
 from . import utility as ut
 from .constant import Cart, TwoPi, Hbar_
 from ._dos import get_occ_dos_kpar, get_occ_dos_proj_kpar
-from ._berry import get_berrycurv_kpar_kpath, berry_fermi, berry_kpath
+from ._berry import berry_fermi, berry_kpath
 from ._alpha_beta import get_alpha_beta_kpar, get_alpha_beta_kpar_kpath, get_alpha_beta_efs_kpar
 from . import _old as od
 
@@ -281,7 +281,7 @@ class TBSystem:
         kpts, kpts_len = kp.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         q_frac = q * self.real_lattice / TwoPi if q > 1e-16 else None
-        omega = get_berrycurv_kpar_kpath(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
+        omega = od.get_berrycurv_kpar_kpath(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
                                          self.num_wann, kpts, ef, eta, mode=mode, q_frac=q_frac, q=q)
         list_o_k = np.column_stack((kpts_len, omega))
         print('time used: %24.2f <-- get_berrycurv_kpath' % (datetime.now() - start).total_seconds())
