@@ -5,6 +5,7 @@ from . import utility as ut
 from .constant import Cart, TwoPi, Hbar_
 from ._dos import get_occ_dos_kpar, get_occ_dos_proj_kpar
 from ._berry import berry_fermi, berry_kpath
+from ._edelstein import edelstein_fermi
 from ._alpha_beta import get_alpha_beta_kpar, get_alpha_beta_kpar_kpath, get_alpha_beta_efs_kpar
 from . import _old as od
 
@@ -394,3 +395,29 @@ class TBSystem:
         output = np.column_stack((kpts_len, out))
         print('time used: %24.2f <-- berry_calc_kpath' % (datetime.now() - start).total_seconds())
         return output
+    
+    def edelstein_calc_fermi(self,
+                         kmesh: tuple[int, int, int],
+                         ef_range: tuple[float, float,int],
+                         eta=1e-4, se_xyz=0, subwf=None):
+        start = datetime.now()
+        print('---------- start berry_calc_fermi ----------')
+        if self.ss_R is None :
+            print('spin data ss_R is missing.')
+            return
+        kpts = kp.get_kpts_mesh(kmesh)
+        print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
+        ef_min, ef_max, n_ef = ef_range[0], ef_range[1], ef_range[2]
+        efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
+        print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
+        inter_efs, intra_efs = edelstein_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
+                                     self.num_wann, kpts, efs, eta, se_xyz=se_xyz, ss_R=self._ss_R, subwf=subwf)
+    
+        inter_efs /= self.volume
+        intra_efs /= self.volume
+        # out_inter = np.column_stack((efs, inter_efs))
+        # out_intra = np.column_stack((efs, intra_efs))
+        output = np.column_stack((efs, inter_efs, intra_efs))
+        print('time used: %24.2f <-- berry_calc_fermi' % (datetime.now() - start).total_seconds())
+        return output
+

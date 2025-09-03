@@ -480,6 +480,10 @@ def dos_fermi(eig, ef, eta):
     fac = (eig - ef) / eta
     return 1.0 / (np.exp(fac) + 1) / (1 + np.exp(-fac)) / eta
 
+@njit(nogil=True)
+def get_delta_E(eig, ef, eta):
+
+    return  1/((ef-eig)**2 + eta**2) / (2 * np.pi)
 
 @njit(nogil=True)
 def spin_w(gamma, num_wann, udud_order=False):
@@ -519,6 +523,21 @@ def inv_e_d_c(eig, num_wann, eta=1e-6):
             e_d[m_, n_] = eig[n_] - eig[m_]
             inv_e_d[m_, n_] = 1.0 / (e_d[m_, n_] + 1j * eta) # if abs(e_d) > 1e-8 else 0.0
     return inv_e_d, e_d
+
+
+@njit(nogil=True)
+def inv_e_d_2(eig, num_wann, eta=1e-6):
+    """
+    inv_e_d_2[m, n] = 1 / ((e_n - e_m)^2 + eta^2))
+    """
+    inv_e_d_2 = np.zeros((num_wann, num_wann), dtype=np.float64)
+    e_d = np.zeros((num_wann, num_wann), dtype=np.float64)
+    for m_ in range(num_wann):
+        for n_ in range(num_wann):
+            e_d[m_, n_] = eig[n_] - eig[m_]
+            inv_e_d_2[m_, n_] = 1.0 / (e_d[m_, n_] * e_d[m_, n_] + eta * eta) # if abs(e_d) > 1e-8 else 0.0
+    return inv_e_d_2
+
 
 # @njit(parallel=True)
 # def sz_n(uu, num_wann: int):
@@ -575,3 +594,5 @@ def get_itasks(tasks):
         begin_idx[it] = count
         count += 3
     return itasks, begin_idx, count
+
+
