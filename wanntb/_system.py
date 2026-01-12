@@ -4,8 +4,9 @@ from . import kpoints as kp
 from . import utility as ut
 from .constant import Cart, TwoPi, Hbar_
 from ._dos import get_occ_dos_kpar, get_occ_dos_proj_kpar
-from ._berry import berry_fermi, berry_kpath
+from ._berry import berry_fermi, berry_kpath, intra_shc_fermi, get_OHE_kpar_kmesh, get_OHE_kpar_kmesh_fermi
 from ._edelstein import edelstein_fermi
+from ._axion_angle import axion_fermi
 from ._alpha_beta import get_alpha_beta_kpar, get_alpha_beta_kpar_kpath, get_alpha_beta_efs_kpar
 from . import _old as od
 
@@ -399,9 +400,11 @@ class TBSystem:
     def edelstein_calc_fermi(self,
                          kmesh: tuple[int, int, int],
                          ef_range: tuple[float, float,int],
-                         eta=1e-4, se_xyz=0, subwf=None):
+                         eta=1e-3,
+                         eta_intra=1e-2,
+                         subwf=None):
         start = datetime.now()
-        print('---------- start berry_calc_fermi ----------')
+        print('---------- start edelstein_calc_fermi ----------')
         if self.ss_R is None :
             print('spin data ss_R is missing.')
             return
@@ -411,13 +414,83 @@ class TBSystem:
         efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
         inter_efs, intra_efs = edelstein_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
-                                     self.num_wann, kpts, efs, eta, se_xyz=se_xyz, ss_R=self._ss_R, subwf=subwf)
+                                     self.num_wann, kpts, efs, eta, eta_intra,  ss_R=self._ss_R, subwf=subwf)
     
-        inter_efs /= self.volume
-        intra_efs /= self.volume
+        # inter_efs /= self.volume
+        # intra_efs /= self.volume
         # out_inter = np.column_stack((efs, inter_efs))
         # out_intra = np.column_stack((efs, intra_efs))
         output = np.column_stack((efs, inter_efs, intra_efs))
         print('time used: %24.2f <-- berry_calc_fermi' % (datetime.now() - start).total_seconds())
         return output
 
+    def berry_calc_intra_shc_fermi(self, kmesh: tuple, ef_range: tuple, eta=1e-3, xyz=2, subwf=None):
+        start = datetime.now()
+        print('---------- start berry_calc_intra_shc_fermi----------')
+
+        if self.ss_R is None:
+            print('Error: spin data ss_R is missing.')
+            return None
+
+        kpts = kp.get_kpts_mesh(kmesh)
+        ef_min, ef_max, n_ef = ef_range[0], ef_range[1], ef_range[2]
+        efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
+
+        out = intra_shc_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT, self._ss_R,
+                                         self.num_wann, kpts, efs, eta, xyz, subwf=subwf)
+
+        shc_out = out / self.area[xyz]
+
+        output = np.column_stack((efs, shc_out))
+        print('time used: %24.2f <-- berry_calc_intra_shc_fermi' % (datetime.now() - start).total_seconds())
+        return output
+
+
+    def axion_calc_fermi(self, kmesh: tuple, ef_range: tuple, eta=1e-4):
+
+        start = datetime.now()
+        print('---------- start axion_calc_fermi ----------')
+
+        kpts = kp.get_kpts_mesh(kmesh)
+        print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
+
+        ef_min, ef_max, n_ef = ef_range[0], ef_range[1], ef_range[2]
+        efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
+        print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
+
+        ss_data = self._ss_R if hasattr(self, '_ss_R') else None
+
+        theta_list = axion_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
+                                 self.num_wann, kpts, efs, eta, ss_R_in=ss_data)
+
+        output = np.column_stack((efs, theta_list))
+        print('time used: %24.2f <-- axion_calc_fermi' % (datetime.now() - start).total_seconds())
+        return output
+
+    def get_OHE_kmesh_sys(self, kmesh, ef, dir):
+        start = datetime.now()
+        print('---------- start spin_moment_kpath ----------')
+        kpts = kp.get_kpts_mesh(kmesh)
+        nkpts = kpts.shape[0]
+        print('total number of k-points: %d' % nkpts)
+        OHE = get_OHE_kpar_kmesh(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT, self.num_wann, kpts, ef, dir)
+        # list_o_k = np.column_stack((ef,spin_moment))
+        print('time used: %24.2f <-- get_morb_berry_kpath' % (datetime.now() - start).total_seconds())
+        return OHE / self.volume * 24300  # unit is S/cm
+
+    def get_OHE_kmesh_fermi_sys(self, kmesh, ef_range, dir):
+        start = datetime.now()
+        print('---------- start OHE_kmesh_fermi_sys ----------')
+        kpts = kp.get_kpts_mesh(kmesh)
+        nkpts = kpts.shape[0]
+        print('total number of k-points: %d' % nkpts)
+        ef_min, ef_max, n_ef = ef_range[0], ef_range[1], int(ef_range[2])
+        efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
+        print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
+
+        OHE = get_OHE_kpar_kmesh_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
+                                       self.num_wann, kpts, efs, dir)
+        print('time used: %24.2f <-- get_OHE_kmesh_fermi_sys' % (datetime.now() - start).total_seconds())
+
+        list_o_k = np.column_stack((efs, OHE / self.volume * 24300))
+        return list_o_k  # unit is S/cm

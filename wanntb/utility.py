@@ -475,15 +475,15 @@ def occ_fermi(eig, ef, eta):
 @njit(nogil=True)
 def dos_fermi(eig, ef, eta):
     """
-    dos for eigenvalues: N(n) = - \partial f_n/ \partial e (e=e_f)
+    dos for eigenvalues: N(n) = - \\partial f_n/ \partial e (e=e_f)
     """
     fac = (eig - ef) / eta
     return 1.0 / (np.exp(fac) + 1) / (1 + np.exp(-fac)) / eta
 
 @njit(nogil=True)
 def get_delta_E(eig, ef, eta):
-
-    return  1/((ef-eig)**2 + eta**2) / (2 * np.pi)
+    de = eig - ef
+    return  eta / (de * de + eta * eta / 4) / TwoPi
 
 @njit(nogil=True)
 def spin_w(gamma, num_wann, udud_order=False):
