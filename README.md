@@ -119,7 +119,7 @@ with the connector `+`.
 The output is a table with the first column of Fermi energies.
 Every three columns thereafter correspond to one type of the calculated quantity:
 - For **AHC** $\sigma^A_{yz}$, $\sigma^A_{zx}$, $\sigma^A_{xy}$ is calculated.
-- For **SHC** $\sigma^{S(x)}_\alpha\beta$, $\sigma^{S(y)}_\alpha\beta$, $\sigma^{S(z)}_\alpha\beta$ is calculated 
+- For **SHC** $\sigma^{S(x)}_{\alpha\beta}$, $\sigma^{S(y)}_{\alpha\beta}$, $\sigma^{S(z)}_{\alpha\beta}$ is calculated 
 (so that argument `xyz` is required).
 - For **Morb** $M^{\gamma}_{L1}$ (the local part), 
 $M^{\gamma}_{L2}$ (the itinerant  part) 
