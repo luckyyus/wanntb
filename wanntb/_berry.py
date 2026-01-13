@@ -8,16 +8,16 @@ I_A = np.array([1, 2, 0], dtype=np.int32)
 I_B = np.array([2, 0, 1], dtype=np.int32)
 
 @njit(nogil=True)
-def _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, ss_R=None, subwf=None):
+def _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, ss_R=None, subwf=None, subwf2=None):
     fac = fourier_phase_R_to_k(R_vec, kpt)
     ham_out = fourier_R_to_k(ham_R, R_cartT, fac, iout=[1, 2, 3])
     # A_bar^W_a[3, num_wann, num_wann] in units angst.
     A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
     eig, uu = np.linalg.eigh(ham_out[0])
-    inv_e_d = inv_e_d_c(eig, num_wann, eta)
+    inv_e_d, e_d = inv_e_d_c(eig, num_wann, eta)
     Ah_ak = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
     Ah_bk = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
-    mat_S = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
+    S_k = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
     if ss_R is not None:
         sw = fourier_R_to_k_vec3(ss_R, fac)
     # A_bar^W_a[3, num_wann, num_wann] in units angst.
@@ -32,8 +32,10 @@ def _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, ss_R=None
                         + 1j * unitary_trans_sub(ham_out[i + 1, subwf, :], uu[subwf, :], uu) * inv_e_d.conj())
             Ah_ak[i] = (Ah_ak[i] + Ah_ak[i].T.conj()) * 0.5
         if ss_R is not None:
-            mat_S = unitary_trans(sw[i], uu)
-    return eig, uu, Ah_ak, Ah_bk, mat_S
+            mat_S = unitary_trans(sw[i], uu) if subwf2 is None \
+                else unitary_trans_sub(sw[i, subwf, :], uu[subwf, :], uu)
+            S_k[i] = mat_S if subwf2 is None else 0.5 * (mat_S + mat_S.T.conj())
+    return eig, uu, Ah_ak, Ah_bk, S_k
 
 
 @njit(nogil=True)
@@ -44,7 +46,7 @@ def _berry_Ah_k(itasks, ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, xyz,
     A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
     eig, uu = np.linalg.eigh(ham_out[0])
     inv_e_d, e_d = inv_e_d_c(eig, num_wann, eta)
-    # for subwf
+
     Ah_a = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
     Ah_b = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
     js_a = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
@@ -67,7 +69,7 @@ def _berry_Ah_k(itasks, ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, xyz,
             va = - 1.0j * e_d * unitary_trans(A_bar_k[I_A[xyz]], uu) + unitary_trans(ham_out[I_A[xyz] + 1], uu)
             # j^spin_a
             mat_B = mat_S @ va
-            js_a[i] = (mat_B + mat_B.T.conj()) * 0.5j * inv_e_d.conj()
+            js_a[i] = (mat_B + mat_B.T.conj()) * -0.5j * inv_e_d.conj()
     return eig, uu, Ah_a, Ah_b, js_a
 
 
@@ -272,8 +274,8 @@ def intra_shc_fermi(ham_R, r_mat_R, R_vec, R_cartT, ss_R, num_wann, kpts, efs, e
 
     for ik in prange(nkpts):
         kpt = kpts[ik]
-        eig, uu, Ah_a, Ah_b, mat_S = _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt,
-                                                ss_R=ss_R, subwf=subwf)
+        eig, uu, Ah_a, Ah_b, _S = _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt,
+                                                ss_R=ss_R, subwf=None, subwf2=subwf)
 
         for i in range(n_ef):
             ef = efs[i]
@@ -281,7 +283,7 @@ def intra_shc_fermi(ham_R, r_mat_R, R_vec, R_cartT, ss_R, num_wann, kpts, efs, e
             omega = _get_f_omega(Ah_a, Ah_b, f, num_wann)
 
             for s_i in range(3):
-                shc_k[i, s_i, ik] = np.sum(omega[xyz] * np.diag(mat_S[s_i]))
+                shc_k[i, s_i, ik] = np.sum(omega[xyz] * np.diag(_S[s_i]).real)
 
     return np.sum(shc_k, axis=2) / nkpts
 

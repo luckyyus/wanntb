@@ -106,8 +106,8 @@ ef_range = (e_min, e_max, n_ef)
 tb.berry_calc_fermi('ahc+shc+morb', kmesh, ef_range, eta=1e-4, xyz=2, subwf=None)
 ```
 Here the first argument `tasks` can be a combination of
-- `ahc` -- anomalous Hall conductivity (**AHC**) in units $e^2/h$, 
-- `shc` -- spin Hall conductivity (**SHC**) in units $(\hbar/2e) e^2/h$
+- `ahc` -- anomalous Hall conductivity (**AHC**) in units $e^2/h/Å$, 
+- `shc` -- spin Hall conductivity (**SHC**) in units $(\hbar/2e) e^2/h/Å$
 - `morb` -- orbit moment (**Morb**) in units $\mu_B$ per u.c. 
 
 with the connector `+`.
