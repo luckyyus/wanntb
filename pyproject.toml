@@ -3,8 +3,9 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 [project]
 name = "wanntb"
-version = "2026.1.12"
+version = "2026.1.13"
 authors = [{name = 'Jie-Xiang Yu', email = 'kaelthas.yu@gmail.com'},
+    {name = 'Sheng Pan'},
     {name = 'Hong-Fei Huang'},
     {name = 'Bao-Feng Chen', email = 'baofengchen2024@gmail.com'}]
 description = 'Toolkits based on WF based tight-binding Hamiltonian'
