@@ -33,7 +33,7 @@ def _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, ss_R=None
             Ah_ak[i] = (Ah_ak[i] + Ah_ak[i].T.conj()) * 0.5
         if ss_R is not None:
             mat_S = unitary_trans(sw[i], uu) if subwf2 is None \
-                else unitary_trans_sub(sw[i, subwf, :], uu[subwf, :], uu)
+                else unitary_trans_sub(sw[i, subwf2, :], uu[subwf2, :], uu)
             S_k[i] = mat_S if subwf2 is None else 0.5 * (mat_S + mat_S.T.conj())
     return eig, uu, Ah_ak, Ah_bk, S_k
 
