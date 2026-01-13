@@ -322,7 +322,7 @@ class TBSystem:
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
         shc_efs = od.get_shc_kpar_fermi(self._ham_RT, self._r_RT, self._Rvec, self._ss_R, self._R_cartT,
                                      self.num_wann, kpts, efs, eta, xyz, subwf=subwf)
-        shc_efs /= self.area[xyz]
+        shc_efs /= self.volume
         output = np.column_stack((efs, shc_efs))
         print('time used: %24.2f <-- get_shc_kmesh_fermi' % (datetime.now() - start).total_seconds())
         return output
@@ -373,9 +373,9 @@ class TBSystem:
                                      self.num_wann, kpts, efs, eta, xyz=xyz, ss_R=self._ss_R, subwf=subwf)
         for it in itasks:
             if it == 0: # ahc
-                out[:, begin_idx[it]: begin_idx[it]+3] /= self.area
+                out[:, begin_idx[it]: begin_idx[it]+3] /= self.volume
             if it == 10: # shc
-                out[:, begin_idx[it]: begin_idx[it] + 3] /= self.area[xyz]
+                out[:, begin_idx[it]: begin_idx[it] + 3] /= self.volume
         output = np.column_stack((efs, out))
         print('time used: %24.2f <-- berry_calc_fermi' % (datetime.now() - start).total_seconds())
         return output
@@ -439,7 +439,7 @@ class TBSystem:
         out = intra_shc_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT, self._ss_R,
                                          self.num_wann, kpts, efs, eta, xyz, subwf=subwf)
 
-        shc_out = out / self.area[xyz]
+        shc_out = out / self.volume
 
         output = np.column_stack((efs, shc_out))
         print('time used: %24.2f <-- berry_calc_intra_shc_fermi' % (datetime.now() - start).total_seconds())

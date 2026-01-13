@@ -1,7 +1,7 @@
 import numpy as np
 from numba import njit, prange
 
-from ._berry import _get_morb_k, _get_f_omega
+from ._berry import _get_morb_k, _get_f_omega, _get_Ah_ab_S_k
 from .constant import TwoPi, Hbar_, Mu_B_
 from .utility import fourier_phase_R_to_k, fourier_R_to_k, fourier_R_to_k_vec3, unitary_trans, occ_fermi, \
     fourier_R_to_k_curl, unitary_trans_sub, _ham_k_system, inv_e_d_r, get_deltaU
@@ -50,29 +50,6 @@ def _get_Ah_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt):
         # A^H_a = A_bar^H_a + i D^H_a = i<psi_m| del_a psi_n>
         Ah_k[i] = unitary_trans(A_bar_k[i], uu) + 1j * unitary_trans(ham_out[i + 1], uu) * inv_e_d
     return Ah_k, eig, uu
-
-@njit(nogil=True)
-def _get_Ah_ab_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt, subwf=None):
-    fac = fourier_phase_R_to_k(R_vec, kpt)
-    ham_out = fourier_R_to_k(ham_R, R_cartT, fac, iout=[1, 2, 3])
-    # A_bar^W_a[3, num_wann, num_wann] in units angst.
-    A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
-    eig, uu = np.linalg.eigh(ham_out[0])
-    inv_e_d = inv_e_d_r(eig, num_wann)
-    Ah_ak = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
-    Ah_bk = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
-    # A_bar^W_a[3, num_wann, num_wann] in units angst.
-    for i in range(3):
-        # D^H_a = UU^dag.del_a UU (a=x,y,z) = {H_bar^H_mna / (e_n - e_m)}
-        # A^H_a = A_bar^H_a + i D^H_a = i<psi_m| del_a psi_n>
-        Ah_bk[i] = unitary_trans(A_bar_k[i], uu) + 1j * unitary_trans(ham_out[i + 1], uu) * inv_e_d
-        if subwf is None:
-            Ah_ak[i] = Ah_bk[i]
-        else:
-            Ah_ak[i] = (unitary_trans_sub(A_bar_k[i, subwf, :], uu[subwf, :], uu)
-                        + 1j * unitary_trans_sub(ham_out[i + 1, subwf, :], uu[subwf, :], uu) * inv_e_d)
-            Ah_ak[i] = (Ah_ak[i] + Ah_ak[i].T.conj()) * 0.5
-    return Ah_ak, Ah_bk, eig, uu
 
 @njit(nogil=True)
 def _get_Ah_bar_Dh_eig_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt):
@@ -209,7 +186,7 @@ def _get_berrycurv_f_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt, ef, eta, m
         f = occ_fermi(eig, ef, eta)
         of_k = _get_f_omega_interpolation(f, duu, num_wann)
     else: # mode == 0
-        Ah_ak, Ah_bk, eig, uu = _get_Ah_ab_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt, subwf)
+        eig, uu, Ah_ak, Ah_bk, _ = _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, subwf=subwf)
         f = occ_fermi(eig, ef, eta)
         of_k = _get_f_omega(Ah_ak, Ah_bk, f, num_wann)
     return of_k, eig

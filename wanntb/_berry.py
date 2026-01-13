@@ -8,6 +8,35 @@ I_A = np.array([1, 2, 0], dtype=np.int32)
 I_B = np.array([2, 0, 1], dtype=np.int32)
 
 @njit(nogil=True)
+def _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, ss_R=None, subwf=None):
+    fac = fourier_phase_R_to_k(R_vec, kpt)
+    ham_out = fourier_R_to_k(ham_R, R_cartT, fac, iout=[1, 2, 3])
+    # A_bar^W_a[3, num_wann, num_wann] in units angst.
+    A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
+    eig, uu = np.linalg.eigh(ham_out[0])
+    inv_e_d = inv_e_d_c(eig, num_wann, eta)
+    Ah_ak = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
+    Ah_bk = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
+    mat_S = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
+    if ss_R is not None:
+        sw = fourier_R_to_k_vec3(ss_R, fac)
+    # A_bar^W_a[3, num_wann, num_wann] in units angst.
+    for i in range(3):
+        # D^H_a = UU^dag.del_a UU (a=x,y,z) = {H_bar^H_mna / (e_n - e_m)}
+        # A^H_a = A_bar^H_a + i D^H_a = i<psi_m| del_a psi_n>
+        Ah_bk[i] = unitary_trans(A_bar_k[i], uu) + 1j * unitary_trans(ham_out[i + 1], uu) * inv_e_d
+        if subwf is None:
+            Ah_ak[i] = Ah_bk[i].conj()
+        else:
+            Ah_ak[i] = (unitary_trans_sub(A_bar_k[i, subwf, :], uu[subwf, :], uu)
+                        + 1j * unitary_trans_sub(ham_out[i + 1, subwf, :], uu[subwf, :], uu) * inv_e_d.conj())
+            Ah_ak[i] = (Ah_ak[i] + Ah_ak[i].T.conj()) * 0.5
+        if ss_R is not None:
+            mat_S = unitary_trans(sw[i], uu)
+    return eig, uu, Ah_ak, Ah_bk, mat_S
+
+
+@njit(nogil=True)
 def _berry_Ah_k(itasks, ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, xyz, ss_R, subwf):
     fac = fourier_phase_R_to_k(R_vec, kpt)
     ham_out = fourier_R_to_k(ham_R, R_cartT, fac, iout=[1, 2, 3])
@@ -22,21 +51,23 @@ def _berry_Ah_k(itasks, ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, xyz,
     if 10 in itasks: # shc
         sw = fourier_R_to_k_vec3(ss_R, fac)
     for i in range(3):
-        Ah_b[i] = unitary_trans(A_bar_k[i], uu) + 1j * unitary_trans(ham_out[i + 1], uu) * inv_e_d  #$A_{nm} = \langle u_n | i \nabla_k | u_m \rangle$。
+        # $A_{nm} = \langle u_n | i \nabla_k | u_m \rangle$
+        Ah_b[i] = unitary_trans(A_bar_k[i], uu) + 1j * unitary_trans(ham_out[i + 1], uu) * inv_e_d
+
         if 0 in itasks or 20 in itasks:  # ahc && morb
             if subwf is not None:
                 Ah_a[i] = (unitary_trans_sub(A_bar_k[i, subwf, :], uu[subwf, :], uu)
-                            + 1j * unitary_trans_sub(ham_out[i + 1, subwf, :], uu[subwf, :], uu) * inv_e_d)
+                            + 1j * unitary_trans_sub(ham_out[i + 1, subwf, :], uu[subwf, :], uu) * inv_e_d.conj())
                 Ah_a[i] = (Ah_a[i] + Ah_a[i].T.conj()) * 0.5
             else:
-                Ah_a[i] = Ah_b[i]
+                Ah_a[i] = Ah_b[i].conj()
         if 10 in itasks: # shc
             mat_S = unitary_trans(sw[i], uu) if subwf is None \
                 else unitary_trans_sub(sw[i, subwf, :], uu[subwf, :], uu)
             va = - 1.0j * e_d * unitary_trans(A_bar_k[I_A[xyz]], uu) + unitary_trans(ham_out[I_A[xyz] + 1], uu)
             # j^spin_a
             mat_B = mat_S @ va
-            js_a[i] = (mat_B + mat_B.T.conj()) * 0.5 * inv_e_d * -1.0j
+            js_a[i] = (mat_B + mat_B.T.conj()) * 0.5j * inv_e_d.conj()
     return eig, uu, Ah_a, Ah_b, js_a
 
 
@@ -46,7 +77,8 @@ def _get_f_omega(Ah_ak, Ah_bk, f, num_wann):
     g = 1.0 - f
     for i in range(3):
         for n_ in range(num_wann):
-            fo_k[i, n_] = np.sum(g * (Ah_ak[I_A[i], n_, :] * Ah_bk[I_B[i], :, n_]).imag) #\Omega = Im <A_x | A_y>
+            # \Omega = Im <A_x | A_y>
+            fo_k[i, n_] = np.sum(g * (Ah_ak[I_A[i], n_, :] * Ah_bk[I_B[i], :, n_]).imag)
     fo_k *= -2.0 * f
     return fo_k
 
@@ -93,10 +125,10 @@ def _get_morb_k(eig, num_wann, ef, Ah_ak, Ah_bk, fo_k, f, xyz):
     return morb1, morb2
 
 @njit(nogil=True)
-def _get_morb_gmat_k(eig, num_wann, ef, Ah_ak, Ah_bk, o_mat, f, xyz):
+def _get_morb_gmat_k(eig, num_wann, ef, Ah_ak, Ah_bk, omega_mat, f, xyz):
     g = 1.0 - f
-    morb2 = o_mat[xyz] * (ef - eig)
-    morb1_2 = o_mat[xyz] * 0.5 * eig
+    morb2 = omega_mat[xyz] * (ef - eig)
+    morb1_2 = omega_mat[xyz] * 0.5 * eig
     morb1_1 = np.zeros((num_wann, num_wann), dtype=np.complex128)
     for m_ in range(num_wann):
         for n_ in range(num_wann):
@@ -106,18 +138,18 @@ def _get_morb_gmat_k(eig, num_wann, ef, Ah_ak, Ah_bk, o_mat, f, xyz):
     return morb1, morb2
 
 
-@njit(nogil=True)
-def _get_sigma_diag(ss_R, R_vec, kpt, uu, num_wann, subwf=None):
-    """ 计算 x, y, z 三个方向自旋算符的对角元 """
-    fac = fourier_phase_R_to_k(R_vec, kpt)
-    sw = fourier_R_to_k_vec3(ss_R, fac)
-    sigma_diag = np.zeros((3, num_wann), dtype=np.float64)
-    for i in range(3):
-        s_bar = unitary_trans(sw[i], uu) if subwf is None \
-            else unitary_trans_sub(sw[i, subwf, :], uu[subwf, :], uu)
-        for n_ in range(num_wann):
-            sigma_diag[i, n_] = s_bar[n_, n_].real
-    return sigma_diag
+# @njit(nogil=True)
+# def _get_sigma_diag(ss_R, R_vec, kpt, uu, num_wann, subwf=None):
+#     """ 计算 x, y, z 三个方向自旋算符的对角元 """
+#     fac = fourier_phase_R_to_k(R_vec, kpt)
+#     sw = fourier_R_to_k_vec3(ss_R, fac)
+#     sigma_diag = np.zeros((3, num_wann), dtype=np.float64)
+#     for i in range(3):
+#         s_bar = unitary_trans(sw[i], uu) if subwf is None \
+#             else unitary_trans_sub(sw[i, subwf, :], uu[subwf, :], uu)
+#         for n_ in range(num_wann):
+#             sigma_diag[i, n_] = s_bar[n_, n_].real
+#     return sigma_diag
 
 
 @njit(parallel=True, nogil=True)
@@ -238,25 +270,18 @@ def intra_shc_fermi(ham_R, r_mat_R, R_vec, R_cartT, ss_R, num_wann, kpts, efs, e
     n_ef = efs.shape[0]
     shc_k = np.zeros((n_ef, 3, nkpts), dtype=np.float64)
 
-    itasks = np.array([0], dtype=np.int32)
-
     for ik in prange(nkpts):
         kpt = kpts[ik]
-
-        eig, uu, Ah_a, Ah_b, _ = _berry_Ah_k(itasks, ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, xyz, ss_R,
-                                             subwf)
-
-        sigma_diags = _get_sigma_diag(ss_R, R_vec, kpt, uu, num_wann)
+        eig, uu, Ah_a, Ah_b, mat_S = _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt,
+                                                ss_R=ss_R, subwf=subwf)
 
         for i in range(n_ef):
             ef = efs[i]
             f = occ_fermi(eig, ef, eta)
-
             omega = _get_f_omega(Ah_a, Ah_b, f, num_wann)
 
             for s_i in range(3):
-                sigma = sigma_diags[s_i]
-                shc_k[i, s_i, ik] = np.sum(omega[xyz] * sigma)
+                shc_k[i, s_i, ik] = np.sum(omega[xyz] * np.diag(mat_S[s_i]))
 
     return np.sum(shc_k, axis=2) / nkpts
 

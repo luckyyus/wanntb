@@ -1,8 +1,8 @@
 import numpy as np
-from ._layeredsystem import LayeredSystem, Structure
-from .utility import _surface_GR, transmission_k2d_kpar, get_self_energies_epar
+from wanntb.negf._layeredsystem import LayeredSystem, Structure
+from wanntb.utility import _surface_GR, transmission_k2d_kpar, get_self_energies_epar
 from time import time
-from .constant import H_
+from wanntb.constant import H_
 
 
 class Lead:
