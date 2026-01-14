@@ -98,6 +98,7 @@ def _get_omega_gmat(Ah_ak, Ah_bk, f, num_wann):
                 #            = (-i \sum { A_x,ln . A_y,ml - A_x,nl . A_y, lm})* = omega_z,mn*
                 fo_k[i, m_, n_] = np.sum(g * (Ah_ak[I_A[i], m_, :] * Ah_bk[I_B[i], :, n_]
                                               - Ah_ak[I_A[i], :, n_] * Ah_bk[I_B[i], m_, :]))
+        fo_k[i,:,:] += -(Ah_ak[I_A[i], :, :] @ Ah_bk[I_B[i], :, :] - Ah_bk[I_B[i], :, :] @ Ah_ak[I_A[i], :, :])
     fo_k *= 1.0j
     return fo_k
 
