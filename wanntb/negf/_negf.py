@@ -1,6 +1,6 @@
 import numpy as np
-from wanntb.negf._layeredsystem import LayeredSystem, Structure
-from wanntb.utility import _surface_GR, transmission_k2d_kpar, get_self_energies_epar
+from wanntb._layeredsystem import LayeredSystem, Structure
+from ._gf import _surface_GR, transmission_k2d_kpar, get_self_energies_epar
 from time import time
 from wanntb.constant import H_
 

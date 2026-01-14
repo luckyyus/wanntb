@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
-from wanntb.constant import TwoPi, Orbitals
-from wanntb.utility import get_list_index, get_dos_e_kpar
+from .constant import TwoPi, Orbitals
+from .utility import get_list_index, get_dos_e_kpar
 from time import time
-from wanntb._system import TBSystem
+from ._system import TBSystem
 """
 input.yml文件的设置：
     efermi: 0.0 # 费米能级(eV)，用来把输入的哈密顿量费米能级调到0；计算时会把电极H0对角元上调这个能级

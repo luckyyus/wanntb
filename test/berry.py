@@ -7,9 +7,10 @@ kpath = np.array([[0.00, 0.00, -0.50], [0.00, 0.00, 0.50]])
 
 # MBT-sl2
 # path = 'MBT-sl2-soc-af001'
+path = 'MBT-sl2-soc-af001-no-spin'
 # ef = 1.442
 # MBT-sl3
-path = 'MBT-sl3-soc-af001'
+# path = 'MBT-sl3-soc-af001'
 # ef = 2.2445
 #MBT-sl6
 # path = 'MBT-sl6-soc-af001'
@@ -35,10 +36,10 @@ kmesh = (ks, ks, 1)
 # ef_range = (1.300, 2.600, 300)
 #sl3
 ef_range = (2.100, 2.400, 300)
-subwf0 = np.r_[0:5]
-subwf = np.append(subwf0, subwf0+69)
-output = tb.berry_calc_fermi('ahc+shc', kmesh, ef_range, eta=1e-3, xyz=2, subwf=subwf)
-np.savetxt(path + '-berry-k%d-sub1.txt' % ks, output, fmt='%16.6f')
+# subwf0 = np.r_[0:5]
+# subwf = np.append(subwf0, subwf0+69)
+output = tb.berry_calc_fermi('ahc', kmesh, ef_range, eta=1e-3, xyz=2, subwf=None)
+np.savetxt(path + '-berry-k%d-no-spin.txt' % ks, output, fmt='%16.6f')
 
 # output = tb.get_ahc_kmesh_fermi((kmesh,kmesh,1), ef_range, eta=1e-3)
 # np.savetxt(path + '-ahc-k%d.txt' % kmesh, output, fmt='%16.6f')

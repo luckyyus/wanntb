@@ -26,6 +26,7 @@ class TBSystem:
 
     def __init__(self, tb_file='wannier90_tb.dat', npz_file=None):
         start = datetime.now()
+        self.ss_R = None
         if npz_file is None:
             data = ut.read_tb_file(tb_file=tb_file)
             self.seedname = data['seedname']
@@ -37,7 +38,6 @@ class TBSystem:
             self.n_Rpts = data['n_Rpts']
             self.n_degen = data['n_degen']
             self.r_mat_R = data['r_mat_R']
-            self.ss_R = None
         else:
             print("reading npz file %s " % npz_file)
             data = np.load(npz_file)
@@ -59,10 +59,13 @@ class TBSystem:
             if 'ss_R' in data.files:
                 self.ss_R = data['ss_R']
                 print('ss_R: %s %s' % (data['ss_R'].dtype, list(data['ss_R'].shape)))
-                self._ss_R = np.ascontiguousarray(self.ss_R.transpose((1,2,3,0)))
+
+
             self.num_wann = self.ham_R.shape[1]
             self.n_Rpts = self.R_vec.shape[0]
             self.n_degen = np.ones(self.n_Rpts, dtype=np.uint8)
+        self._ss_R = np.ascontiguousarray(self.ss_R.transpose((1,2,3,0))) if self.ss_R is not None else \
+            np.zeros((3, self.num_wann, self.num_wann, self.n_Rpts), dtype=np.complex128)
         # [num_wann, num_wann, n_Rpts]
         self._ham_RT = np.ascontiguousarray(self.ham_R.transpose((1, 2, 0)))
         # [3, num_wann, num_wann, n_Rpts]
