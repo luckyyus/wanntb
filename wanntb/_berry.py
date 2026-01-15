@@ -54,15 +54,17 @@ def _berry_Ah_k(itasks, ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, xyz,
         sw = fourier_R_to_k_vec3(ss_R, fac)
     for i in range(3):
         # $A_{nm} = \langle u_n | i \nabla_k | u_m \rangle$
-        Ah_b[i] = unitary_trans(A_bar_k[i], uu) + 1j * unitary_trans(ham_out[i + 1], uu) * inv_e_d
+        Ah_bar = unitary_trans(A_bar_k[i], uu)
+        i_ham_a = 1j * unitary_trans(ham_out[i + 1], uu)
+        Ah_b[i] = Ah_bar + i_ham_a * inv_e_d
 
         if 0 in itasks or 20 in itasks:  # ahc && morb
             if subwf is not None:
                 Ah_a[i] = (unitary_trans_sub(A_bar_k[i, subwf, :], uu[subwf, :], uu)
-                            + 1j * unitary_trans_sub(ham_out[i + 1, subwf, :], uu[subwf, :], uu) * inv_e_d)
+                            + 1j * unitary_trans_sub(ham_out[i + 1, subwf, :], uu[subwf, :], uu) * inv_e_d.conj())
                 Ah_a[i] = (Ah_a[i] + Ah_a[i].T.conj()) * 0.5
             else:
-                Ah_a[i] = Ah_b[i]
+                Ah_a[i] = Ah_bar + i_ham_a * inv_e_d.conj()
         if 10 in itasks: # shc
             mat_S = unitary_trans(sw[i], uu) if subwf is None \
                 else unitary_trans_sub(sw[i, subwf, :], uu[subwf, :], uu)
