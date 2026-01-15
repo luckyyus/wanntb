@@ -477,8 +477,9 @@ def axion_fermi(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpts, efs, eta, subwf=
             ef = efs[i]
             f = occ_fermi(eig, ef, eta)
             og_mat = _get_omega_gmat(Ah_bk, Ah_bk, f, num_wann)
-            p_dot_Ah = (Ah_ak + Ah_ak.T.conj()) * 0.5
-            theta_k = np.trace((p_dot_Ah @ og_mat).real * f)
+            p_dot_Ah = (Ah_ak[2] + Ah_ak[2].T.conj()) * 0.5
+            theta_k = np.sum(np.diag(p_dot_Ah @ og_mat[2]).real * f)
+            # theta_k = np.diag(og_mat[2]).real * f
             results_ef[i, ik] = theta_k
 
     # 归一化：结果实部除以 (-4 * pi * nkpts)

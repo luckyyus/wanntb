@@ -37,16 +37,16 @@ Berry_Task = {
     'ahc':{
         'itask': 0,
         'columns' : ['sigma_x', 'sigma_y', 'sigma_z'],
-        'units_fermi': 'e^2/h'
+        'units_fermi': 'e^2/h/\AA'
     },
     'shc':{
         'itask': 10,
         'columns' : ['sigma_ab^x', 'sigma_ab^y', 'sigma_ab^z'],
-        'units_fermi': 'e^2/h(hbar/2e)'
+        'units_fermi': 'e^2/h/\AA(hbar/2e)'
     },
     'morb': {
         'itask': 20,
         'columns' : ['morb1_xyz', 'morb2_xyz', 'morb_xyz'],
-        'units_fermi': 'mu_B'
+        'units_fermi': 'mu_B/u.c.'
     },
 }
