@@ -69,7 +69,7 @@ def _berry_Ah_k(itasks, ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, xyz,
             va = - 1.0j * e_d * unitary_trans(A_bar_k[I_A[xyz]], uu) + unitary_trans(ham_out[I_A[xyz] + 1], uu)
             # j^spin_a
             mat_B = mat_S @ va
-            js_a[i] = (mat_B + mat_B.T.conj()) * -0.5j * inv_e_d
+            js_a[i] = (mat_B + mat_B.T.conj()) * -0.5j * inv_e_d.conj()
     return eig, uu, Ah_a, Ah_b, js_a
 
 
