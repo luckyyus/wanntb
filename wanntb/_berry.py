@@ -100,7 +100,7 @@ def _get_omega_gmat(Ah_ak, Ah_bk, f, num_wann):
                 #            = (-i \sum { A_x,ln . A_y,ml - A_x,nl . A_y, lm})* = omega_z,mn*
                 fo_k[i, m_, n_] = np.sum(g * (Ah_ak[I_A[i], m_, :] * Ah_bk[I_B[i], :, n_]
                                               - Ah_ak[I_A[i], :, n_] * Ah_bk[I_B[i], m_, :]))
-        fo_k[i,:,:] += -(Ah_ak[I_A[i], :, :] @ Ah_bk[I_B[i], :, :] - Ah_bk[I_B[i], :, :] @ Ah_ak[I_A[i], :, :])
+        # fo_k[i,:,:] += -(Ah_ak[I_A[i], :, :] @ Ah_bk[I_B[i], :, :] - Ah_bk[I_B[i], :, :] @ Ah_ak[I_A[i], :, :])
     fo_k *= 1.0j
     return fo_k
 
@@ -462,3 +462,24 @@ def get_OHE_kpar_kmesh_fermi(ham_R, r_mat_R, R_vec, _R_cartT, num_wann, kpts, ef
                 OBC_f[j, i, ik] = np.sum(f * OBC[i])
     return 2 * np.sum(OBC_f, axis=2) / nkpts
 
+# Move from _axion_angle.py (Deleted)
+@njit(parallel=True, nogil=True)
+def axion_fermi(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpts, efs, eta, subwf=None):
+    nkpts = kpts.shape[0]
+    n_ef = efs.shape[0]
+    results_ef = np.zeros((n_ef, nkpts), dtype=np.float64)
+
+    for ik in prange(nkpts):
+        kpt = kpts[ik]
+        eig, uu, Ah_ak, Ah_bk, _ = _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann,eta, kpt, subwf=subwf)
+
+        for i in range(n_ef):
+            ef = efs[i]
+            f = occ_fermi(eig, ef, eta)
+            og_mat = _get_omega_gmat(Ah_bk, Ah_bk, f, num_wann)
+            p_dot_Ah = (Ah_ak + Ah_ak.T.conj()) * 0.5
+            theta_k = np.trace((p_dot_Ah @ og_mat).real * f)
+            results_ef[i, ik] = theta_k
+
+    # 归一化：结果实部除以 (-4 * pi * nkpts)
+    return np.sum(results_ef, axis=1) * TwoPi * TwoPi / (-2.0 * nkpts)
