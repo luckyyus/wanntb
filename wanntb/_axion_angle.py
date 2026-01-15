@@ -1,7 +1,7 @@
 import numpy as np
-from numba import njit, prange
-from ._berry import _berry_Ah_k, _get_omega_gmat, I_A, I_B
-from .utility import occ_fermi
+from numba import njit
+from ._berry import _get_omega_gmat
+
 
 @njit(nogil=True)
 def _calc_axion_kernel_k(Ah_k, num_wann, f):
@@ -43,29 +43,3 @@ def _calc_axion_kernel_k(Ah_k, num_wann, f):
     return term1 + term2
 
 
-@njit(parallel=True, nogil=True)
-def axion_fermi(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpts, efs, eta, ss_R_in=None):
-    nkpts = kpts.shape[0]
-    n_ef = efs.shape[0]
-    results_ef = np.zeros(n_ef, dtype=np.complex128)
-    itasks = np.array([0], dtype=np.int32)
-
-    # 解决 None 类型推断问题
-    if ss_R_in is None:
-        ss_R = np.zeros((1, 1, 1, 1), dtype=np.complex128)
-    else:
-        ss_R = ss_R_in
-
-    for ik in prange(nkpts):
-        kpt = kpts[ik]
-        eig, _, Ah_bk, _ = _berry_Ah_k(itasks, ham_R, r_mat_R, R_vec, R_cartT,
-                                       num_wann, eta, kpt, 2, ss_R, None)
-
-        for i in range(n_ef):
-            ef = efs[i]
-            f = occ_fermi(eig, ef, eta)
-            kernel = _calc_axion_kernel_k(Ah_bk, num_wann, f)
-            results_ef[i] += kernel
-
-    # 归一化：结果实部除以 (-4 * pi * nkpts)
-    return results_ef.real / (-4.0 * np.pi * nkpts)

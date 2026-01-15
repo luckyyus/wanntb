@@ -4,9 +4,8 @@ from . import kpoints as kp
 from . import utility as ut
 from .constant import Cart, TwoPi, Hbar_
 from ._dos import get_occ_dos_kpar, get_occ_dos_proj_kpar
-from ._berry import berry_fermi, berry_kpath, intra_shc_fermi, get_OHE_kpar_kmesh, get_OHE_kpar_kmesh_fermi
+from ._berry import berry_fermi, berry_kpath, intra_shc_fermi, get_OHE_kpar_kmesh, get_OHE_kpar_kmesh_fermi, axion_fermi
 from ._edelstein import edelstein_fermi
-from ._axion_angle import axion_fermi
 from ._alpha_beta import get_alpha_beta_kpar, get_alpha_beta_kpar_kpath, get_alpha_beta_efs_kpar
 from . import _old as od
 
@@ -449,7 +448,7 @@ class TBSystem:
         return output
 
 
-    def axion_calc_fermi(self, kmesh: tuple, ef_range: tuple, eta=1e-4):
+    def axion_calc_fermi(self, kmesh: tuple, ef_range: tuple, eta=1e-4, subwf=None):
 
         start = datetime.now()
         print('---------- start axion_calc_fermi ----------')
@@ -461,12 +460,10 @@ class TBSystem:
         efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
 
-        ss_data = self._ss_R if hasattr(self, '_ss_R') else None
-
-        theta_list = axion_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
-                                 self.num_wann, kpts, efs, eta, ss_R_in=ss_data)
-
-        output = np.column_stack((efs, theta_list))
+        theta = axion_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
+                                 self.num_wann, kpts, efs, eta, subwf=subwf)
+        theta /= self.volume
+        output = np.column_stack((efs, theta))
         print('time used: %24.2f <-- axion_calc_fermi' % (datetime.now() - start).total_seconds())
         return output
 
