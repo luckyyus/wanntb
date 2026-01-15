@@ -26,10 +26,10 @@ def _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, ss_R=None
         # A^H_a = A_bar^H_a + i D^H_a = i<psi_m| del_a psi_n>
         Ah_bk[i] = unitary_trans(A_bar_k[i], uu) + 1j * unitary_trans(ham_out[i + 1], uu) * inv_e_d
         if subwf is None:
-            Ah_ak[i] = Ah_bk[i].conj()
+            Ah_ak[i] = Ah_bk[i]
         else:
             Ah_ak[i] = (unitary_trans_sub(A_bar_k[i, subwf, :], uu[subwf, :], uu)
-                        + 1j * unitary_trans_sub(ham_out[i + 1, subwf, :], uu[subwf, :], uu) * inv_e_d.conj())
+                        + 1j * unitary_trans_sub(ham_out[i + 1, subwf, :], uu[subwf, :], uu) * inv_e_d)
             Ah_ak[i] = (Ah_ak[i] + Ah_ak[i].T.conj()) * 0.5
         if ss_R is not None:
             mat_S = unitary_trans(sw[i], uu) if subwf2 is None \
@@ -59,17 +59,17 @@ def _berry_Ah_k(itasks, ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, xyz,
         if 0 in itasks or 20 in itasks:  # ahc && morb
             if subwf is not None:
                 Ah_a[i] = (unitary_trans_sub(A_bar_k[i, subwf, :], uu[subwf, :], uu)
-                            + 1j * unitary_trans_sub(ham_out[i + 1, subwf, :], uu[subwf, :], uu) * inv_e_d.conj())
+                            + 1j * unitary_trans_sub(ham_out[i + 1, subwf, :], uu[subwf, :], uu) * inv_e_d)
                 Ah_a[i] = (Ah_a[i] + Ah_a[i].T.conj()) * 0.5
             else:
-                Ah_a[i] = Ah_b[i].conj()
+                Ah_a[i] = Ah_b[i]
         if 10 in itasks: # shc
             mat_S = unitary_trans(sw[i], uu) if subwf is None \
                 else unitary_trans_sub(sw[i, subwf, :], uu[subwf, :], uu)
             va = - 1.0j * e_d * unitary_trans(A_bar_k[I_A[xyz]], uu) + unitary_trans(ham_out[I_A[xyz] + 1], uu)
             # j^spin_a
             mat_B = mat_S @ va
-            js_a[i] = (mat_B + mat_B.T.conj()) * -0.5j * inv_e_d.conj()
+            js_a[i] = (mat_B + mat_B.T.conj()) * -0.5j * inv_e_d
     return eig, uu, Ah_a, Ah_b, js_a
 
 
