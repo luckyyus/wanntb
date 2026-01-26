@@ -3,6 +3,17 @@ import yaml
 import pkgutil
 import numpy as np
 
+'''
+Units used in the code:
+energy: eV
+time: ps 
+length: \AA
+1 T = 1e-8 V.ps.\AA^-2
+1 mu_B = 5.7883817982e-5 eV.T^-1
+1 h = 4.1356676969e-3 eV.ps 
+'''
+
+
 TwoPi = 2.0 * pi
 
 Charge_SI = 1.6021766208e-19  # in Coulomb
@@ -18,11 +29,7 @@ Eta_4 = 1.0e-4
 Eta_6 = 1.0e-6
 Eta_8 = 1.0e-8
 
-_Cart = [[1.0, 0.0, 0.0],
-         [0.0, 1.0, 0.0],
-         [0.0, 0.0, 1.0]]
-
-Cart = np.array(_Cart, dtype=float)
+Cart = np.eye(3, dtype=np.float64)
 
 S_ = np.array([
     [[ 0.0,  1.0],

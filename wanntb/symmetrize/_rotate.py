@@ -187,37 +187,37 @@ def rotate_spinor(axis, alpha, inv=False):
     return rotation_matrix
 
 
-def get_sym_op_reciprocal(lattice, orb_info, kpt, rotation, translation, TR):
-    """
-    简化版倒易空间对称操作符计算。
-    参数:
-        lattice: 晶格向量（3x3矩阵）。
-        orb_info: 轨道信息（列表字典，包含位置等）。
-        kpt: k点向量。
-        rotation: 实空间旋转矩阵。
-        translation: 平移。
-        TR: 时间反演标志。
-    返回:
-        对称操作符矩阵（norb x norb）。
-    """
-    norb = len(orb_info)
-    sym_op = np.zeros((norb, norb), dtype=np.complex128)
+# def get_sym_op_reciprocal(lattice, orb_info, kpt, rotation, translation, TR):
+#     """
+#     简化版倒易空间对称操作符计算。
+#     参数:
+#         lattice: 晶格向量（3x3矩阵）。
+#         orb_info: 轨道信息（列表字典，包含位置等）。
+#         kpt: k点向量。
+#         rotation: 实空间旋转矩阵。
+#         translation: 平移。
+#         TR: 时间反演标志。
+#     返回:
+#         对称操作符矩阵（norb x norb）。
+#     """
+#     norb = len(orb_info)
+#     sym_op = np.zeros((norb, norb), dtype=np.complex128)
     
-    # 简化：假设每个轨道是局域的，旋转只影响轨道基矢
-    # 生成轨道旋转矩阵（使用rotate_Ylm类似逻辑）
-    # 这里省略详细轨道类型匹配，仅示例
+#     # 简化：假设每个轨道是局域的，旋转只影响轨道基矢
+#     # 生成轨道旋转矩阵（使用rotate_Ylm类似逻辑）
+#     # 这里省略详细轨道类型匹配，仅示例
     
-    for i in range(norb):
-        for j in range(norb):
-            # 计算相位因子：e^{-i k·(R·r_j + t - r_i)} 等
-            # 简化处理：假设旋转后轨道位置变化
-            phase = np.exp(-2j * np.pi * np.dot(kpt, translation))  # 示例相位
-            # 轨道旋转部分（需根据轨道角动量计算）
-            orb_rot = 1.0  # placeholder，实际调用rotate_Ylm
-            sym_op[i, j] = phase * orb_rot
+#     for i in range(norb):
+#         for j in range(norb):
+#             # 计算相位因子：e^{-i k·(R·r_j + t - r_i)} 等
+#             # 简化处理：假设旋转后轨道位置变化
+#             phase = np.exp(-2j * np.pi * np.dot(kpt, translation))  # 示例相位
+#             # 轨道旋转部分（需根据轨道角动量计算）
+#             orb_rot = 1.0  # placeholder，实际调用rotate_Ylm
+#             sym_op[i, j] = phase * orb_rot
     
-    if TR:
-        # 时间反演：取共轭并可能乘以因子
-        sym_op = sym_op.conj()
+#     if TR:
+#         # 时间反演：取共轭并可能乘以因子
+#         sym_op = sym_op.conj()
     
-    return sym_op
+#     return sym_op
