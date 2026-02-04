@@ -15,11 +15,15 @@ Toolkits based on WF based tight-binding Hamiltonian
 ### Initialize the TB object
 Get the TB object of a WF based tight-binding Hamiltonian:
 ```
-tb = wanntb.TBSystem(tb_file='wannier90_tb.dat')
+tb = wanntb.get_tbsystem_by_tb_file(tb_file='wannier90_tb.dat')
 ```
 Load the spin file ('wannier90_SS_R.dat') to the TB object:
 ```
 tb.load_spins(ss_file='wannier90_SS_R.dat')
+```
+Load the atom positions file ('POSCAR') to the TB object:
+```
+tb.load_poscar(pos_file='POSCAR')
 ```
 Store the TB system into a numpy npz binary file:
 ```
@@ -29,8 +33,7 @@ If spins has been loaded, .npz file contains spin data.
 
 Get the TB object from a npz binary file stored by output_npz:
 ```
-tb = wanntb.TBSystem(npz_file='wannier90-tb.npz')
-# if [npz_file] is None, then get the object from [tb_file]
+tb = wanntb.get_tbsystem_by_npz_file(npz_file='wannier90-tb.npz')
 ```
 
 ### Eigenvalues and Eigenstates
