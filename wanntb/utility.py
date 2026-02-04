@@ -1,6 +1,8 @@
 import numpy as np
 from numba import njit, prange
-from .constant import TwoPi, Eta_4, S_, Berry_Task
+from typing import Optional
+
+from .constant import TwoPi, EPS4, EPS5, EPS6, S_, Berry_Task
 
 
 def get_list_index(item, li):
@@ -52,11 +54,12 @@ def get_dos_e_kpar(num_wann, ham_R, R_vec, ef, n_e, e_list, nkpts, kpts):
     for ik in prange(nkpts):
         ham_k = _get_ham_k2d(num_wann, ham_R, R_vec, kpts[ik, :], ef)
         for ie in range(n_e):
-            gR = np.linalg.inv(np.eye(num_wann, dtype=np.complex128) * (e_list[ie] + 1j * Eta_4) - ham_k)
+            gR = np.linalg.inv(np.eye(num_wann, dtype=np.complex128) * (e_list[ie] + 1j * EPS4) - ham_k)
             dos_k[ie, ik] = np.trace(gR).imag
     return - np.sum(dos_k, axis=1) / np.pi / nkpts
 
 
+@njit(nogil=True)
 def hermiization_R(mat, R_vec):
     """
     对格点坐标下的算符矩阵厄米化
@@ -74,7 +77,8 @@ def hermiization_R(mat, R_vec):
             continue
         for jr in range(ir-1, nrpt):
             dr = R_vec[ir] + R_vec[jr]
-            if np.dot(dr, dr) == 0:
+
+            if dr[0] == 0 and dr[1] == 0 and dr[2] == 0:
                 if len(shape) == 3:
                     _real = (_mat[ir] + _mat[jr].T).real / 2
                     _imag = (_mat[ir] - _mat[jr].T).imag / 2
@@ -102,101 +106,6 @@ def unitary_trans(mat, uu, inverse=False):
 @njit(nogil=True)
 def unitary_trans_sub(mat, uu1, uu2):
     return uu1.conj().T @ mat @ uu2
-
-
-def read_tb_file(tb_file='wannier90_tb.dat'):
-    seedname = tb_file.split('/')[-1].split('_')[0]
-    # read tb file
-    with open(tb_file, 'r') as f:
-        line = f.readline()
-        print("reading tb file %s ( %s )" % (tb_file, line.strip()))
-        # real lattice
-        real_lattice = np.array([f.readline().split()[:3] for i in range(3)], dtype=np.float64)
-        print('real lattice:')
-        print(real_lattice)
-        recip_lattice = np.linalg.inv(real_lattice).T * TwoPi
-        print('reciprocal lattice:')
-        print(recip_lattice)
-        num_wann = int(f.readline())
-        n_Rpts = int(f.readline())
-        # degenerate rpt
-        ndegen = []
-        while len(ndegen) < n_Rpts:
-            ndegen += f.readline().split()
-        n_degen = np.array(ndegen, dtype=np.uint8)
-        # initialize R_vec and Ham_R
-        irpt = []
-        ham_R = np.zeros((n_Rpts, num_wann, num_wann), dtype=np.complex128)
-        # read each R_vec[nRvec0, 3] and Ham_R[n_Rpts, num_wann, num_wann]
-        for ir in range(n_Rpts):
-            f.readline()
-            irpt.append(f.readline().split())
-            hh = np.array(
-                [[f.readline().split()[2:4] for n in range(num_wann)] for m in range(num_wann)],
-                dtype=float).transpose((2, 1, 0))
-            ham_R[ir, :, :] = (hh[0, :, :] + 1j * hh[1, :, :])
-        # R_vec = np.ascontiguousarray(irpt, dtype=np.float64)  # 为了和k.R正常一些
-        R_vec = np.ascontiguousarray(irpt, dtype=np.int16)  # 为了和k.R正常一些
-        ham_R = np.ascontiguousarray(ham_R)
-        print('ham_R: %s %s' % (ham_R.dtype, list(ham_R.shape)))
-        print('R_vec: %s %s' % (R_vec.dtype, list(R_vec.shape)))
-        print('n_degen: %s %s' % (n_degen.dtype, list(n_degen.shape)))
-        r_mat_R = np.zeros((n_Rpts, 3, num_wann, num_wann), dtype=np.complex128)
-        for ir in range(n_Rpts):
-            f.readline()
-            assert (np.array(f.readline().split(), dtype=np.int16) == R_vec[ir]).all()
-            aa = np.array([[f.readline().split()[2:8]
-                            for n in range(num_wann)]
-                           for m in range(num_wann)], dtype=np.float64)
-            r_mat_R[ir, :, :, :] = (aa[:,:,0::2] + 1j*aa[:,:,1::2]).transpose((2,1,0))
-        print('r_mat_R: %s %s' % (r_mat_R.dtype, list(r_mat_R.shape)))
-    for ir in range(n_Rpts):
-        ham_R[ir] /= n_degen[ir]
-        r_mat_R[ir] /= n_degen[ir]
-    ham_R = hermiization_R(ham_R, R_vec)
-    r_mat_R = hermiization_R(r_mat_R, R_vec)
-    n_degen[:] = 1
-    # real_lattice[3,3] float
-    # recip_lattice[3,3] float
-    # ham_R[n_Rpts, num_wann, num_wann] complex
-    # R_vec[n_Rpts, 3] int16
-    # n_degen[n_Rpts] uint8
-    # r_mat_R[n_Rpts, 3, num_wann, num_wann] complex
-    return {'seedname': seedname,
-            'num_wann': num_wann,
-            'real_lattice': real_lattice,
-            'recip_lattice': recip_lattice,
-            'n_Rpts': n_Rpts,
-            'ham_R': ham_R,
-            'R_vec': R_vec,
-            'n_degen': n_degen,
-            'r_mat_R': r_mat_R}
-
-
-def read_spin_file(R_vec, n_Rpts, num_wann, ss_file='wannier90_SS_R.dat'):
-    ss_R = np.zeros((n_Rpts, 3, num_wann, num_wann), dtype=np.complex128)
-    with open(ss_file, 'r') as f:
-        line = f.readline()
-        print("reading spin file %s ( %s )" % (ss_file, line.strip()))
-        assert int(f.readline()) == num_wann
-        assert int(f.readline()) == n_Rpts
-        ndegen = []
-        while len(ndegen) < n_Rpts:
-            ndegen += f.readline().split()
-        n_degen = np.array(ndegen, dtype=np.uint8)
-
-        for ir in range(n_Rpts):
-            f.readline()
-            assert (np.array(f.readline().split(), dtype=np.int32) == R_vec[ir]).all()
-            aa = np.array([[f.readline().split()[2:8]
-                            for n in range(num_wann)]
-                           for m in range(num_wann)], dtype=np.float64)
-            ss_R[ir, :, :, :] = (aa[:,:,0::2] + 1j*aa[:,:,1::2]).transpose((2,1,0))
-        print('ss_R: %s %s' % (ss_R.dtype, list(ss_R.shape)))
-    for ir in range(n_Rpts):
-        ss_R[ir] /= n_degen[ir]
-    _ss_R = hermiization_R(ss_R, R_vec)
-    return _ss_R
 
 
 @njit(nogil=True)
@@ -386,8 +295,8 @@ def occ_fermi(eig, ef, eta):
 
 @njit(nogil=True)
 def dos_fermi(eig, ef, eta):
-    """
-    dos for eigenvalues: N(n) = - \\partial f_n/ \partial e (e=e_f)
+    """dos for eigenvalues with Fermi-Dirac distribution:
+    N(n) = - partial f_n/ partial e (e=e_f)
     """
     fac = (eig - ef) / eta
     return 1.0 / (np.exp(fac) + 1) / (1 + np.exp(-fac)) / eta
@@ -508,3 +417,98 @@ def get_itasks(tasks):
     return itasks, begin_idx, count
 
 
+@njit(nogil=True)
+def vectors_equal(v1: np.ndarray, v2: np.ndarray, tol: float = EPS5) -> bool:
+    """Check if two vectors are equal within tolerance.
+
+    Args:
+        v1: First vector.
+        v2: Second vector.
+        tol: Tolerance for comparison.
+
+    Returns:
+        True if vectors are equal within tolerance.
+    """
+    return np.all(np.abs(v1 - v2) < tol)
+
+@njit(nogil=True)
+def vector_distance(v1: np.ndarray, v2: np.ndarray,
+                   lattice: Optional[np.ndarray] = None) -> float:
+    """Compute distance between two points.
+
+    Args:
+        v1: First point (direct coordinates if lattice given).
+        v2: Second point.
+        lattice: Lattice vectors [3, 3] for Cartesian conversion.
+
+    Returns:
+        Distance between points.
+    """
+    diff = v1 - v2
+    if lattice is not None:
+        diff = diff @ lattice  # Convert to Cartesian
+    return np.linalg.norm(diff)
+
+
+@njit(nogil=True)
+def normalize_vector(v: np.ndarray) -> np.ndarray:
+    """Normalize a vector to unit length.
+
+    Args:
+        v: Input vector.
+
+    Returns:
+        Normalized vector, or zero vector if input is zero.
+    """
+    norm = np.linalg.norm(v)
+    if norm < EPS6:
+        return v
+    return v / norm
+
+
+@njit(nogil=True)
+def kpoints_equivalent(k1: np.ndarray, k2: np.ndarray, tol: float = EPS5) -> bool:
+    """Check if two k-points are equivalent (differ by reciprocal lattice vector).
+
+    Args:
+        k1: First k-point in reciprocal coordinates.
+        k2: Second k-point.
+        tol: Tolerance for fractional part comparison.
+
+    Returns:
+        True if k-points are equivalent.
+    """
+    diff = k1 - k2
+    frac_diff = diff - np.round(diff)
+    return np.all(np.abs(frac_diff) < tol)
+
+
+@njit(cache=True, nogil=True)
+def find_R_vec(rv: np.ndarray, rvec_pool: np.ndarray) -> int:
+    """Binary search for R-vector (integer) in a sorted pool (Lexicographical)."""
+    low = 0
+    high = rvec_pool.shape[0] - 1
+    while low <= high:
+        mid = (low + high) // 2
+        diff = rv - rvec_pool[mid]
+
+        # Lexicographical comparison with tolerance
+        is_smaller = False
+        is_equal = True
+
+        for i in range(0,3,-1): # the first index is the major one
+            if diff[i] < 0:
+                is_smaller = True
+                is_equal = False
+                break
+            elif diff[i] > 0:
+                is_equal = False
+                break
+
+        if is_equal:
+            return mid
+        elif is_smaller:
+            high = mid - 1
+        else:
+            low = mid + 1
+    return -1

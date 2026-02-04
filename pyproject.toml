@@ -10,7 +10,7 @@ authors = [{name = 'Jie-Xiang Yu', email = 'kaelthas.yu@gmail.com'},
     {name = 'Bao-Feng Chen', email = 'baofengchen2024@gmail.com'}]
 description = 'Toolkits based on WF based tight-binding Hamiltonian'
 readme = 'README.md'
-dependencies = ['numpy>1.16', 'numba>0.50', 'pandas']
+dependencies = ['numpy>1.16', 'numba>0.50', 'pandas', 'spglib>2.5']
 requires-python = ">= 3.10"
 license = {text = "MIT License"}
 

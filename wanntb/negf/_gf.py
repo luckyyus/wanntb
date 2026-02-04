@@ -1,7 +1,7 @@
 import numpy as np
 from numba import njit, prange
 
-from wanntb.constant import Eta_4
+from wanntb.constant import EPS4
 from wanntb.utility import _get_ham_k2d, _matrix_add_by_index, _get_submatrix_by_index
 
 
@@ -19,7 +19,7 @@ def _surface_GR(energy, n_dim, h0, t, mu=0.0, n_iter=25):
     """
     a0 = t
     b0 = np.ascontiguousarray(t.T.conjugate())
-    e0 = h0 - np.eye(n_dim) * (1j * Eta_4 - mu)
+    e0 = h0 - np.eye(n_dim) * (1j * EPS4 - mu)
     es = e0.copy()
     for i in range(n_iter):
         # if self.max_z == 1:  # 目前就做了最近邻，其他的先空着

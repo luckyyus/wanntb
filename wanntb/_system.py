@@ -1,8 +1,13 @@
+from typing import Tuple, List
 import numpy as np
+from numpy.typing import NDArray
 from datetime import datetime
+
+from . import io
 from . import kpoints as kp
 from . import utility as ut
 from .constant import Cart, TwoPi, Hbar_
+from ._orbit import orbital_info
 from ._dos import get_occ_dos_kpar, get_occ_dos_proj_kpar
 from ._berry import berry_fermi, berry_kpath, intra_shc_fermi, get_OHE_kpar_kmesh, get_OHE_kpar_kmesh_fermi, axion_fermi
 from ._edelstein import edelstein_fermi
@@ -10,60 +15,56 @@ from ._alpha_beta import get_alpha_beta_kpar, get_alpha_beta_kpar_kpath, get_alp
 from . import _old as od
 
 
-# spec = [
-#     ('seedname', numba.core.string),
-#     ('num_wann', int32),
-#     ('real_lattice',float64[:]),
-#     ('recip_lattice', float64[:]),
-#     ('n_Rpts', int32),
-#     ('ham_R', complex128[:,:,:]),
-#
-# ]
-
-
 class TBSystem:
 
-    def __init__(self, tb_file='wannier90_tb.dat', npz_file=None):
+    def __init__(self):
         start = datetime.now()
-        self.ss_R = None
-        if npz_file is None:
-            data = ut.read_tb_file(tb_file=tb_file)
-            self.seedname = data['seedname']
-            self.num_wann = data['num_wann']
-            self.real_lattice = data['real_lattice']
-            self.recip_lattice = data['recip_lattice']
-            self.ham_R = data['ham_R']
-            self.R_vec = data['R_vec']
-            self.n_Rpts = data['n_Rpts']
-            self.n_degen = data['n_degen']
-            self.r_mat_R = data['r_mat_R']
-        else:
-            print("reading npz file %s " % npz_file)
-            data = np.load(npz_file)
-            print(data.files)
-            print('seedname:', data['seedname'])
-            print('real lattice:')
-            print(data['real_lattice'])
-            print('reciprocal lattice:')
-            print(data['recip_lattice'])
-            self.seedname = data['seedname']
-            self.real_lattice = data['real_lattice']
-            self.recip_lattice = data['recip_lattice']
-            self.ham_R = data['ham_R']
-            self.R_vec = data['R_vec']
-            self.r_mat_R = data['r_mat_R']
-            print('ham_R: %s %s' % (data['ham_R'].dtype, list(data['ham_R'].shape)))
-            print('R_vec: %s %s' % (data['R_vec'].dtype, list(data['R_vec'].shape)))
-            print('r_mat_R: %s %s' % (data['r_mat_R'].dtype, list(data['r_mat_R'].shape)))
-            if 'ss_R' in data.files:
-                self.ss_R = data['ss_R']
-                print('ss_R: %s %s' % (data['ss_R'].dtype, list(data['ss_R'].shape)))
+        # basic data
+        self.seedname = 'tb-system' # npz
+        self.real_lattice: NDArray[np.float64]|None = None # npz
+        self.recip_lattice: NDArray[np.float64]|None = None
+        self.ham_R: NDArray[np.complex128]|None = None # npz
+        self.R_vec: NDArray[np.int16]|None = None  # npz
+        self.r_mat_R: NDArray[np.complex128] | None = None # npz
 
+        # spin data
+        self.ss_R: NDArray[np.complex128]|None = None # npz
+        # structure data
+        self.atom_pos: NDArray[np.float64]|None = None # npz
+        self.atom_names: List[str]|None = None # npz
+        self.atom_spec: NDArray[np.int16]|None = None # npz
+        self.atom_counts: NDArray[np.int_]|None = None # npz
+        self.n_atoms: int = 0 #
 
-            self.num_wann = self.ham_R.shape[1]
-            self.n_Rpts = self.R_vec.shape[0]
-            self.n_degen = np.ones(self.n_Rpts, dtype=np.uint8)
-        self._ss_R = np.ascontiguousarray(self.ss_R.transpose((1,2,3,0))) if self.ss_R is not None else \
+        # orbital data
+        self.orb_pos: NDArray[np.float64]|None = None # npz
+        self.orb_lmsr: NDArray[np.uint8]|None = None # npz
+        self.orb_laxis: NDArray[np.float64]|None = None # npz
+        self.orb_is_laxis: bool = False
+        self.n_orbs: int = 0
+
+        # post initialized data
+        self.n_degen: NDArray[np.uint8] | None = None
+        self.num_wann: int = 0
+        self.n_Rpts: int = 0
+        self._ss_R: NDArray[np.complex128]|None = None
+        self._ham_RT: NDArray[np.complex128]|None = None
+        self._r_RT: NDArray[np.complex128]|None = None
+        self._Rvec: NDArray[np.float64]|None = None
+        self._R_cartT: NDArray[np.float64]|None = None
+
+        self.iR0: int = 0
+        self.wann_centers_cart: NDArray[np.float64] | None = None
+        self.wann_centers_frac: NDArray[np.float64] | None = None
+        self.volume: float | None = None
+        self.area: NDArray[np.float64] | None = None
+
+    def post_init(self):
+        self.num_wann = self.ham_R.shape[1]
+        self.n_Rpts = self.R_vec.shape[0]
+        self.n_degen = np.ones(self.n_Rpts, dtype=np.uint8)
+
+        self._ss_R = np.ascontiguousarray(self.ss_R.transpose((1, 2, 3, 0))) if self.ss_R is not None else \
             np.zeros((3, self.num_wann, self.num_wann, self.n_Rpts), dtype=np.complex128)
         # [num_wann, num_wann, n_Rpts]
         self._ham_RT = np.ascontiguousarray(self.ham_R.transpose((1, 2, 0)))
@@ -89,37 +90,68 @@ class TBSystem:
         _ay = np.cross(self.real_lattice[2], self.real_lattice[0])
         _az = np.cross(self.real_lattice[0], self.real_lattice[1])
         self.area = np.array([np.sqrt(_ax @ _ax), np.sqrt(_ay @ _ay), np.sqrt(_az @ _az)], dtype=np.float64)
-        print('area for three direction:')
-        print(self.area)
-        print('time used: %24.2f <-- initialize TB system' % (datetime.now() - start).total_seconds())
+        print('area for three direction (maybe wrong):')
+        print(f'{self.area[0]:10.4f}{self.area[1]:10.4f}{self.area[2]:10.4f}')
+
 
     def load_spins(self, ss_file='wannier90_SS_R.dat'):
         start = datetime.now()
         print('---------- start load_spins ----------')
-        self.ss_R = ut.read_spin_file(self.R_vec,self.n_Rpts, self.num_wann, ss_file=ss_file)
+        self.ss_R = io.read_spin_file(self.R_vec, self.n_Rpts, self.num_wann, ss_file=ss_file)
         self._ss_R = np.ascontiguousarray(self.ss_R.transpose((1, 2, 3, 0)))
         print('time used: %24.2f <-- load_spins' % (datetime.now() - start).total_seconds())
+
+    def load_poscar(self, pos_file='POSCAR'):
+        _, self.atom_pos, self.atom_names, self.atom_counts = io.read_poscar(pos_file, self.real_lattice)
+        self.n_atoms = self.atom_pos.shape[0]
+        print('number of atoms: %d' % self.n_atoms)
+        print('atom_pos: %s %s' % (self.atom_pos.dtype, list(self.atom_pos.shape)))
+        print('atom_names: %s' % self.atom_names)
+        print('atom_counts: %s' % self.atom_counts)
+        self.atom_spec = np.zeros(self.n_atoms, dtype=np.int16)
+        begin = 0
+        for i_spec in range(len(self.atom_names)):
+            self.atom_spec[begin: begin+self.atom_counts[i_spec]] = i_spec
+            begin += self.atom_counts[i_spec]
+        print('atom_spec: %s' % self.atom_spec)
+
+    def load_orbitals(self, projections, is_laxis=False, is_soc=True, order='uudd'):
+        self.orb_pos, self.orb_lmsr, orb_laxis = orbital_info(projections,
+                                                                   self.real_lattice,
+                                                                   self.atom_pos, self.atom_names, self.atom_counts,
+                                                                   is_soc=is_soc,
+                                                                   order=order)
+        self.orb_is_laxis = is_laxis
+        self.n_orbs = self.orb_pos.shape[0]
+        print('number of orbitals: %d' % self.n_orbs)
+        assert self.n_orbs == self.num_wann, 'number of orbitals should be the same with the number of WFs.'
+
+        print('orb_pos: %s %s' % (self.orb_pos.dtype, list(self.orb_pos.shape)))
+        print('orb_lms: %s %s' % (self.orb_lmsr.dtype, list(self.orb_lmsr.shape)))
+        if is_laxis:
+            self.orb_laxis = orb_laxis
+            print('orb_laxis: %s %s' % (self.orb_laxis.dtype, list(self.orb_laxis.shape)))
 
     def output_npz(self, seedname='packaged'):
         start = datetime.now()
         filename = seedname + '-tb.npz'
-        if self.ss_R is None:
-            np.savez(filename,
-                     seedname=seedname,
-                     real_lattice=self.real_lattice,
-                     recip_lattice=self.recip_lattice,
-                     ham_R=self.ham_R,
-                     R_vec=self.R_vec,
-                     r_mat_R=self.r_mat_R)
-        else:
-            np.savez(filename,
-                     seedname=seedname,
-                     real_lattice=self.real_lattice,
-                     recip_lattice=self.recip_lattice,
-                     ham_R=self.ham_R,
-                     R_vec=self.R_vec,
-                     r_mat_R=self.r_mat_R,
-                     ss_R=self.ss_R)
+        array_dict = {'seedname': seedname,
+                      'real_lattice': self.real_lattice,
+                      'ham_R': self.ham_R,
+                      'R_vec': self.R_vec,
+                      'r_mat_R': self.r_mat_R}
+        if self.ss_R is not None:
+            array_dict['ss_R'] = self.ss_R
+        if self.n_atoms > 0:
+            array_dict['atom_pos'] = self.atom_pos
+            array_dict['atom_names'] = self.atom_names
+            array_dict['atom_counts'] = self.atom_counts
+            array_dict['atom_spec'] = self.atom_spec
+        if self.n_orbs > 0:
+            array_dict['orb_pos'] = self.orb_pos
+            array_dict['orb_lmsr'] = self.orb_lmsr
+            if self.orb_is_laxis: array_dict['orb_laxis'] = self.orb_laxis
+        np.savez(filename, **array_dict)
         print(filename, ' is saved.')
         print('time used: %24.2f <-- output_npz' % (datetime.now() - start).total_seconds())
 
@@ -494,3 +526,82 @@ class TBSystem:
 
         list_o_k = np.column_stack((efs, OHE / self.volume * 24300))
         return list_o_k  # unit is S/cm
+
+def get_tbsystem_by_new_ham(tb, ham_R, r_mat_R, R_vec, ss_R):
+    start = datetime.now()
+    return
+
+def get_tbsystem_by_tb_file(tb_file='wannier90_tb.dat'):
+    start = datetime.now()
+    print('---------- start get_tbsystem_by_tb_file ----------')
+    tb = TBSystem()
+
+    data = io.read_tb_file(tb_file=tb_file)
+    tb.seedname = data['seedname']
+    tb.num_wann = data['num_wann']
+    tb.real_lattice = data['real_lattice']
+    tb.recip_lattice = data['recip_lattice']
+    tb.ham_R = data['ham_R']
+    tb.R_vec: NDArray[np.int16] = data['R_vec']
+    tb.n_Rpts = data['n_Rpts']
+    tb.n_degen = data['n_degen']
+    tb.r_mat_R = data['r_mat_R']
+
+    tb.post_init()
+    print('time used: %24.2f <-- get_tbsystem_by_tb_file' % (datetime.now() - start).total_seconds())
+    return tb
+
+def get_tbsystem_by_npz_file(npz_file='wannier90_npz.dat'):
+    start = datetime.now()
+    print('---------- start get_tbsystem_by_npz_file ----------')
+    tb = TBSystem()
+
+    print("reading npz file %s " % npz_file)
+    data = np.load(npz_file)
+    print(data.files)
+    print('seedname:', data['seedname'])
+    tb.seedname = data['seedname']
+    tb.real_lattice = data['real_lattice']
+    print('real lattice:')
+    print(tb.real_lattice)
+    tb.recip_lattice = np.linalg.inv(tb.real_lattice).T * TwoPi
+    print('reciprocal lattice:')
+    print(tb.recip_lattice)
+    tb.ham_R = data['ham_R']
+    tb.R_vec = data['R_vec']
+    tb.r_mat_R = data['r_mat_R']
+    print('ham_R: %s %s' % (data['ham_R'].dtype, list(data['ham_R'].shape)))
+    print('R_vec: %s %s' % (data['R_vec'].dtype, list(data['R_vec'].shape)))
+    print('r_mat_R: %s %s' % (data['r_mat_R'].dtype, list(data['r_mat_R'].shape)))
+    tb.num_wann = tb.ham_R.shape[1]
+    tb.n_Rpts = tb.R_vec.shape[0]
+    tb.n_degen = np.ones(tb.n_Rpts, dtype=np.uint8)
+    if 'ss_R' in data.files:
+        tb.ss_R = data['ss_R']
+        print('ss_R: %s %s' % (data['ss_R'].dtype, list(data['ss_R'].shape)))
+    if 'atom_pos' in data.files:
+        tb.atom_pos = data['atom_pos']
+        tb.atom_names = data['atom_names']
+        tb.atom_counts = data['atom_counts']
+        tb.atom_spec = data['atom_spec']
+        tb.n_atoms = tb.atom_pos.shape[0]
+        print('atom_pos: %s %s' % (tb.atom_pos.dtype, list(tb.atom_pos.shape)))
+        print('atom_names: %s' % tb.atom_names)
+        print('atom_counts: %s' % tb.atom_counts)
+        print('atom_spec: %s' % tb.atom_spec)
+    if 'orb_pos' in data.files:
+        tb.orb_pos = data['orb_pos']
+        tb.orb_lmsr = data['orb_lmsr']
+        tb.n_orbs = tb.orb_pos.shape[0]
+        print('orb_pos: %s %s' % (tb.orb_pos.dtype, list(tb.orb_pos.shape)))
+        print('orb_lms: %s %s' % (tb.orb_lmsr.dtype, list(tb.orb_lmsr.shape)))
+        if 'orb_laxis' in data.files:
+            tb.orb_is_laxis = True
+            tb.orb_laxis = data['orb_laxis']
+            print('orb_laxis: %s %s' % (tb.orb_laxis.dtype, list(tb.orb_laxis.shape)))
+        else:
+            tb.orb_is_laxis = False
+
+    print('time used: %24.2f <-- get_tbsystem_by_npz_file' % (datetime.now() - start).total_seconds())
+    tb.post_init()
+    return tb

@@ -1,5 +1,6 @@
 import numpy as np
-from wanntb._layeredsystem import LayeredSystem, Structure
+from wanntb._layeredsystem import LayeredSystem
+from ..struct import Structure
 from ._gf import _surface_GR, transmission_k2d_kpar, get_self_energies_epar
 from time import time
 from wanntb.constant import H_

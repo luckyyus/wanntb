@@ -288,7 +288,7 @@ def intra_shc_fermi(ham_R, r_mat_R, R_vec, R_cartT, ss_R, num_wann, kpts, efs, e
             for s_i in range(3):
                 shc_k[i, s_i, ik] = np.sum(omega[xyz] * np.diag(_S[s_i]).real)
 
-    return np.sum(shc_k, axis=2) / nkpts
+    return np.sum(shc_k, axis=2) / nkpts * -TwoPi
 
 # @njit(parallel=True, nogil=True)
 # def intra_shc_fermi(ham_R, r_mat_R, R_vec, R_cartT, ss_R, num_wann, kpts, efs, eta, xyz=2, subwf=None):
@@ -482,5 +482,5 @@ def axion_fermi(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpts, efs, eta, subwf=
             # theta_k = np.diag(og_mat[2]).real * f
             results_ef[i, ik] = theta_k
 
-    # 归一化：结果实部除以 (-4 * pi * nkpts)
-    return np.sum(results_ef, axis=1) * TwoPi * TwoPi / (-2.0 * nkpts)
+    # 归一化：结果实部除以 (-4 * pi * nkpts) 结果为 以 2pi为单位值
+    return np.sum(results_ef, axis=1) * TwoPi / (-2.0 * nkpts)
