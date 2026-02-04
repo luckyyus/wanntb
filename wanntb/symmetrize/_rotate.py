@@ -193,7 +193,7 @@ def Y2R_R2Y_cached(l: np.uint8) -> Tuple[NDArray, NDArray]:
         _CACHED_Y2R[l], _CACHED_R2Y[l] = Y2R_R2Y(l)
     return _CACHED_Y2R[l], _CACHED_R2Y[l]
 
-
+@njit(nogil=True)
 def combine_rotation_with_local_axis(rotation_cart: NDArray,
                                      source_axis: NDArray,
                                      target_axis: NDArray) -> NDArray:
