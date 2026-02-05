@@ -29,10 +29,9 @@ class Lead:
 
 
 class NEGF:
-    """
-    非平衡格林函数系统
+    """非平衡格林函数系统
     包括左电极、右电极、器件的哈密顿量以及器件部分的结构
-    GR = [E-Ham_k-\SigmaR]^-1
+    GR = [E-Ham_k-SigmaR]^-1
     T = Tr(Gamma_l.gR_lr.Gamma_r.gA_rl)
     J = e/H_*integral T(E)|u_l-u_r
     """

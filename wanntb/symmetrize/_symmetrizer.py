@@ -22,9 +22,11 @@ class Symmetrizer:
                                                            self._system.atom_pos, self._system.atom_spec,
                                                            magmom_str=magmom_str,
                                                            tol=symprec)
+        self._operations.print_symmetry()
         self.is_soc = is_soc
         # process orbital sites data (positions, indices and the length)
         self.orb_site_pos, _orb_site_indices = group_orbitals_by_site(self._system.orb_pos)
+        print('orb_site_pos: %s %s' % (self.orb_site_pos.dtype, list(self.orb_site_pos.shape)))
         self.n_orb_sites = self.orb_site_pos.shape[0]
         self.max_orbs = max(len(idx_arr) for idx_arr in _orb_site_indices)
         self.orb_site_indices = np.full((self.n_orb_sites, self.max_orbs), -1, dtype=int)
@@ -32,7 +34,7 @@ class Symmetrizer:
 
         for i in range(self.n_orb_sites):
             idx_arr = _orb_site_indices[i]
-            n_idx = idx_arr.shape[0]
+            n_idx = len(idx_arr)
             self.orb_site_indices[i, :n_idx] = idx_arr
             self.orb_site_lens[i] = n_idx
 
@@ -561,10 +563,10 @@ def site_mapping(lattice: NDArray, site_positions: NDArray,
         for j in range(nsites):
             diff = tau_new - site_positions[j]
             rvec = np.round(diff)
-            remainder = diff - rvec
+            remainder = (diff - rvec).astype(np.float64)
             if np.linalg.norm(remainder @ lattice) < EPS5:
                 mapping[i, 0] = j
-                mapping[i, 1:] = np.array(rvec, dtype=np.int_)
+                mapping[i, 1:] = rvec
                 found = True
                 break
         if not found:

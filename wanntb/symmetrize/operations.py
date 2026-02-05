@@ -38,7 +38,7 @@ def get_symmetry(real_lattice: np.ndarray, positions: np.ndarray, types: np.ndar
 class SymmetryOperators:
 
     def __init__(self, symm, is_magnetic=True):
-        self.rotations = symm['rotations']
+        self.rotations = symm['rotations'].astype(np.float64)
         self.n_operators = self.rotations.shape[0]
         self.translations = symm['translations']
         self.time_reversals = symm['time_reversals'] if is_magnetic else -np.ones(self.n_operators)
@@ -46,6 +46,16 @@ class SymmetryOperators:
         for idx in range(self.n_operators):
             assert np.allclose(self.rotations[idx], np.round(self.rotations[idx]), atol=DEFAULT_SYMM_TOLERANCE), \
                 f"WARNING: Symmetry operation rotation matrix is not compatible with integer lattice!\n"
+
+    def print_symmetry(self):
+        print(f'number of operators: {self.n_operators}')
+        for idx in range(self.n_operators):
+            print('\n')
+            print(f'No. {idx}')
+            print('Rotation:')
+            print(np.array2string(self.rotations[idx], precision=0, suppress_small=True))
+            print(f'Translation: {np.array2string(self.translations[idx], precision=6, suppress_small=True)}')
+            print(f'Time_reversal: {self.time_reversals[idx]}')
 
 
     def __getitem__(self, idx):

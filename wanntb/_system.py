@@ -196,7 +196,7 @@ class TBSystem:
         eig_da = ut.get_eig_da(eig, ham_k_da, uu)
         return eig, eig_da, np.diagonal(ut.unitary_trans(ham_k_da, uu)).real
 
-    def output_bands_kpath(self, kpath, nkpts_path=100, filename='bands-debug.txt', spin=True):
+    def output_bands_kpath(self, kpath, nkpts_path=100, filename='bands-debug.txt'):
         start = datetime.now()
         print('---------- start plot_bands_kpath ----------')
         kpts, kpts_len = kp.get_kpts_path(kpath, nkpts_path, self.recip_lattice)
@@ -533,7 +533,7 @@ class TBSystem:
         list_o_k = np.column_stack((efs, OHE / self.volume * 24300))
         return list_o_k  # unit is S/cm
 
-def get_tbsystem_by_new_ham(tb_in: TBSystem, ham_R_new, r_mat_R_new, R_vec_new, ss_R_new):
+def get_tbsystem_by_new_ham(tb_in: TBSystem, ham_R_new, r_mat_R_new, R_vec_new, ss_R_new=None):
     start = datetime.now()
     print('---------- start get_tbsystem_by_new_ham ----------')
     tb = TBSystem()
