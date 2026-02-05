@@ -43,8 +43,8 @@ def orbital_info(projections: List[Dict], real_lattice: NDArray,
         # Get sites for this projection
         if pj['element'].startswith('f=') or pj['element'].startswith('c='):
             # Coordinate specification
-            coord_type = pj['element'][0]
-            coord_str = pj['element'][2:]
+            coord_type = pj['element'][0] # f or c
+            coord_str = pj['element'][2:] # coordinate string
             site = _parse_coordinate(coord_str)
             if coord_type == 'c':
                 # Cartesian to direct

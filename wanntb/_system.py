@@ -102,6 +102,8 @@ class TBSystem:
         print('time used: %24.2f <-- load_spins' % (datetime.now() - start).total_seconds())
 
     def load_poscar(self, pos_file='POSCAR'):
+        start = datetime.now()
+        print('---------- start load_poscar ----------')
         _, self.atom_pos, self.atom_names, self.atom_counts = io.read_poscar(pos_file, self.real_lattice)
         self.n_atoms = self.atom_pos.shape[0]
         print('number of atoms: %d' % self.n_atoms)
@@ -114,23 +116,27 @@ class TBSystem:
             self.atom_spec[begin: begin+self.atom_counts[i_spec]] = i_spec
             begin += self.atom_counts[i_spec]
         print('atom_spec: %s' % self.atom_spec)
+        print('time used: %24.2f <-- load_poscar' % (datetime.now() - start).total_seconds())
 
     def load_orbitals(self, projections, is_laxis=False, is_soc=True, order='uudd'):
+        start = datetime.now()
+        print('---------- start load_orbitals ----------')
         self.orb_pos, self.orb_lmsr, orb_laxis = orbital_info(projections,
-                                                                   self.real_lattice,
-                                                                   self.atom_pos, self.atom_names, self.atom_counts,
-                                                                   is_soc=is_soc,
-                                                                   order=order)
+                                                              self.real_lattice,
+                                                              self.atom_pos, self.atom_names, self.atom_counts,
+                                                              is_soc=is_soc,
+                                                              order=order)
         self.orb_is_laxis = is_laxis
         self.n_orbs = self.orb_pos.shape[0]
         print('number of orbitals: %d' % self.n_orbs)
         assert self.n_orbs == self.num_wann, 'number of orbitals should be the same with the number of WFs.'
 
         print('orb_pos: %s %s' % (self.orb_pos.dtype, list(self.orb_pos.shape)))
-        print('orb_lms: %s %s' % (self.orb_lmsr.dtype, list(self.orb_lmsr.shape)))
+        print('orb_lmsr: %s %s' % (self.orb_lmsr.dtype, list(self.orb_lmsr.shape)))
         if is_laxis:
             self.orb_laxis = orb_laxis
             print('orb_laxis: %s %s' % (self.orb_laxis.dtype, list(self.orb_laxis.shape)))
+        print('time used: %24.2f <-- load_orbitals' % (datetime.now() - start).total_seconds())
 
     def output_npz(self, seedname='packaged'):
         start = datetime.now()
@@ -527,9 +533,58 @@ class TBSystem:
         list_o_k = np.column_stack((efs, OHE / self.volume * 24300))
         return list_o_k  # unit is S/cm
 
-def get_tbsystem_by_new_ham(tb, ham_R, r_mat_R, R_vec, ss_R):
+def get_tbsystem_by_new_ham(tb_in: TBSystem, ham_R_new, r_mat_R_new, R_vec_new, ss_R_new):
     start = datetime.now()
-    return
+    print('---------- start get_tbsystem_by_new_ham ----------')
+    tb = TBSystem()
+    tb.seedname = tb_in.seedname
+    tb.real_lattice = tb.real_lattice.copy()
+    print('real lattice:')
+    print(tb.real_lattice)
+    tb.recip_lattice = np.linalg.inv(tb.real_lattice).T * TwoPi
+    print('reciprocal lattice:')
+    print(tb.recip_lattice)
+    assert ham_R_new.shape[1:] == tb_in.ham_R.shape[1:], 'the dimension of Hamiltonian mismatch'
+    tb.ham_R = ham_R_new
+    tb.R_vec = R_vec_new
+    n_Rpts_new = R_vec_new.shape[0]
+    print('ham_R: %s %s' % (tb.ham_R.dtype, list(tb.ham_R.shape)))
+    print('R_vec: %s %s' % (tb.R_vec.dtype, list(tb.R_vec.shape)))
+    if r_mat_R_new is not None:
+        tb.r_mat_R = r_mat_R_new
+    else:
+        if n_Rpts_new == tb_in.n_Rpts: tb.r_mat_R = tb_in.r_mat_R.copy()
+    assert tb.r_mat_R is not None, 'new r_mat_R is missing'
+    print('r_mat_R: %s %s' % tb.r_mat_R.dtype, list(tb.r_mat_R.shape))
+
+    if ss_R_new is not None:
+        tb.ss_R = ss_R_new
+        print('ss_R: %s %s' % (tb.ss_R.dtype, list(tb.ss_R.shape)))
+    if tb_in.atom_pos is not None:
+        tb.atom_pos = tb_in.atom_pos.copy()
+        tb.atom_names = tb_in.atom_names.copy()
+        tb.atom_counts = tb_in.atom_counts.copy()
+        tb.atom_spec = tb_in.atom_spec.copy()
+        tb.n_atoms = tb.atom_pos.shape[0]
+        print('atom_pos: %s %s' % (tb.atom_pos.dtype, list(tb.atom_pos.shape)))
+        print('atom_names: %s' % tb.atom_names)
+        print('atom_counts: %s' % tb.atom_counts)
+        print('atom_spec: %s' % tb.atom_spec)
+    if tb_in.orb_pos is not None:
+        tb.orb_pos = tb_in.orb_pos.copy()
+        tb.orb_lmsr = tb_in.orb_lmsr.copy()
+        tb.n_orbs = tb.orb_pos.shape[0]
+        print('orb_pos: %s %s' % (tb.orb_pos.dtype, list(tb.orb_pos.shape)))
+        print('orb_lms: %s %s' % (tb.orb_lmsr.dtype, list(tb.orb_lmsr.shape)))
+        if tb_in.orb_is_laxis:
+            tb.orb_is_laxis = True
+            tb.orb_laxis = tb_in.orb_laxis.copy()
+            print('orb_laxis: %s %s' % (tb.orb_laxis.dtype, list(tb.orb_laxis.shape)))
+        else:
+            tb.orb_is_laxis = False
+    tb.post_init()
+    print('time used: %24.2f <-- get_tbsystem_by_new_ham' % (datetime.now() - start).total_seconds())
+    return tb
 
 def get_tbsystem_by_tb_file(tb_file='wannier90_tb.dat'):
     start = datetime.now()
@@ -573,9 +628,9 @@ def get_tbsystem_by_npz_file(npz_file='wannier90_npz.dat'):
     print('ham_R: %s %s' % (data['ham_R'].dtype, list(data['ham_R'].shape)))
     print('R_vec: %s %s' % (data['R_vec'].dtype, list(data['R_vec'].shape)))
     print('r_mat_R: %s %s' % (data['r_mat_R'].dtype, list(data['r_mat_R'].shape)))
-    tb.num_wann = tb.ham_R.shape[1]
-    tb.n_Rpts = tb.R_vec.shape[0]
-    tb.n_degen = np.ones(tb.n_Rpts, dtype=np.uint8)
+    # tb.num_wann = tb.ham_R.shape[1]
+    # tb.n_Rpts = tb.R_vec.shape[0]
+    # tb.n_degen = np.ones(tb.n_Rpts, dtype=np.uint8)
     if 'ss_R' in data.files:
         tb.ss_R = data['ss_R']
         print('ss_R: %s %s' % (data['ss_R'].dtype, list(data['ss_R'].shape)))
@@ -601,7 +656,6 @@ def get_tbsystem_by_npz_file(npz_file='wannier90_npz.dat'):
             print('orb_laxis: %s %s' % (tb.orb_laxis.dtype, list(tb.orb_laxis.shape)))
         else:
             tb.orb_is_laxis = False
-
-    print('time used: %24.2f <-- get_tbsystem_by_npz_file' % (datetime.now() - start).total_seconds())
     tb.post_init()
+    print('time used: %24.2f <-- get_tbsystem_by_npz_file' % (datetime.now() - start).total_seconds())
     return tb

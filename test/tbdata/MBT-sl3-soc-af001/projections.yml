@@ -1,0 +1,9 @@
+- element: Mn
+  orb_names:
+    - d
+- element: Bi
+  orb_names:
+    - p
+- element: Te
+  orb_names:
+    - p

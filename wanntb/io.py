@@ -1,8 +1,7 @@
-from typing import Tuple, List, Optional
+from typing import Tuple, List
 
 import numpy as np
 
-from .symmetrize._spg import SymmetryOperator
 from .constant import TwoPi, EPS5, EPS6
 from .utility import hermiization_R
 
@@ -199,164 +198,164 @@ def read_spin_file(R_vec, n_Rpts, num_wann, ss_file='wannier90_SS_R.dat'):
     return _ss_R
 
 
-"""Symmetry file I/O.
-
-This module provides functions to read and write symmetry operation files.
-"""
-
-
-def read_symmetry_file(filename: str) -> Tuple[List[SymmetryOperator], bool]:
-    """Read symmetry operations from file.
-
-    File format:
-        nsymm = N
-        --- 1 ---
-        rot[0,0] rot[0,1] rot[0,2]
-        rot[1,0] rot[1,1] rot[1,2]
-        rot[2,0] rot[2,1] rot[2,2]
-        t[0] t[1] t[2] [T/F for time reversal]
-        ...
-
-    Args:
-        filename: Path to symmetry file.
-
-    Returns:
-        Tuple of (symmetry_operators, flag_global_trsymm).
-    """
-    symmetries = []
-    flag_global_trsymm = True
-
-    with open(filename, 'r') as f:
-        lines = f.readlines()
-
-    line_idx = 0
-
-    # Find nsymm
-    nsymm = 0
-    while line_idx < len(lines):
-        line = lines[line_idx].strip().lower()
-        if line.startswith('nsymm'):
-            parts = line.split('=')
-            if len(parts) >= 2:
-                nsymm = int(parts[1].strip())
-            break
-        # Check for global time reversal
-        if 'time-reversal' in line or 'global' in line:
-            if 'false' in line:
-                flag_global_trsymm = False
-        line_idx += 1
-
-    line_idx += 1
-
-    # Read symmetry operations
-    for _ in range(nsymm):
-        # Skip to '---' line
-        while line_idx < len(lines):
-            if '---' in lines[line_idx]:
-                break
-            line_idx += 1
-        line_idx += 1
-
-        # Read rotation matrix
-        rotation = np.zeros((3, 3))
-        for i in range(3):
-            parts = lines[line_idx].split()
-            rotation[i] = [float(parts[0]), float(parts[1]), float(parts[2])]
-            line_idx += 1
-
-        # Read translation and optional time reversal
-        parts = lines[line_idx].split()
-        translation = np.array([float(parts[0]), float(parts[1]), float(parts[2])])
-        time_reversal = -1
-        if len(parts) >= 4:
-            tr_str = parts[3].upper()
-            if tr_str == 'T':
-                time_reversal = 1
-            elif tr_str == 'F':
-                time_reversal = 0
-        line_idx += 1
-
-        symmetries.append(SymmetryOperator(
-            rotation=rotation,
-            translation=translation,
-            time_reversal=time_reversal
-        ))
-
-    return symmetries, flag_global_trsymm
-
-
-def write_symmetry_file(filename: str, symmetries: List[SymmetryOperator],
-                        flag_global_trsymm: bool = True,
-                        space_group_info: Optional[str] = None):
-    """Write symmetry operations to file.
-
-    Args:
-        filename: Output file path.
-        symmetries: List of symmetry operators.
-        flag_global_trsymm: Global time reversal symmetry flag.
-        space_group_info: Optional space group information string.
-    """
-    with open(filename, 'w') as f:
-        if space_group_info:
-            f.write(f"space group information:\n{space_group_info}\n")
-
-        f.write(f"global time-reversal symmetry = {'True' if flag_global_trsymm else 'False'}\n")
-        f.write(f"nsymm = {len(symmetries)}\n")
-
-        for i, symm in enumerate(symmetries):
-            f.write(f"--- {i + 1} ---\n")
-            for j in range(3):
-                f.write(f"{int(round(symm.rotation[j, 0])):2d} "
-                       f"{int(round(symm.rotation[j, 1])):2d} "
-                       f"{int(round(symm.rotation[j, 2])):2d}\n")
-            tr_str = ""
-            if not flag_global_trsymm and symm.time_reversal >= 0:
-                tr_str = " T" if symm.time_reversal == 1 else " F"
-            f.write(f"{symm.translation[0]:.6f} "
-                   f"{symm.translation[1]:.6f} "
-                   f"{symm.translation[2]:.6f}{tr_str}\n")
-
-
-def format_symmetry_description(symm: SymmetryOperator, lattice: np.ndarray,
-                                index: int = 0) -> str:
-    """Format a symmetry operation as a human-readable string.
-
-    Args:
-        symm: Symmetry operator.
-        lattice: Lattice vectors [3, 3].
-        index: Symmetry index for labeling.
-
-    Returns:
-        Formatted description string.
-    """
-    from .symmetrize._rotate import rotation_to_axis_angle
-
-    axis, angle, is_inversion = rotation_to_axis_angle(symm.rotation, lattice)
-    angle_deg = np.degrees(angle)
-
-    if abs(angle) < 0.1 and symm.time_reversal != 1:
-        trans_norm = np.linalg.norm(symm.translation)
-        if trans_norm < 0.01:
-            if is_inversion:
-                return f"symm{index + 1:4d}: Inversion"
-            else:
-                return f"symm{index + 1:4d}: Identity"
-
-    desc = f"symm{index + 1:4d}:{angle_deg:6.1f} deg rot around "
-    desc += f"({axis[0]:7.4f},{axis[1]:7.4f},{axis[2]:7.4f})"
-
-    trans_norm = np.linalg.norm(symm.translation)
-    if trans_norm > 0.01:
-        desc += f" with trans ({symm.translation[0]:7.4f} "
-        desc += f"{symm.translation[1]:7.4f} {symm.translation[2]:7.4f})"
-
-    if is_inversion:
-        if abs(abs(angle_deg) - 180) < 1.0:
-            desc += " with inv (Mirror)"
-        else:
-            desc += " with inv"
-
-    if symm.time_reversal == 1:
-        desc += " with TRS"
-
-    return desc
+# """Symmetry file I/O.
+#
+# This module provides functions to read and write symmetry operation files.
+# """
+#
+#
+# def read_symmetry_file(filename: str) -> Tuple[SymmetryOperators, bool]:
+#     """Read symmetry operations from file.
+#
+#     File format:
+#         nsymm = N
+#         --- 1 ---
+#         rot[0,0] rot[0,1] rot[0,2]
+#         rot[1,0] rot[1,1] rot[1,2]
+#         rot[2,0] rot[2,1] rot[2,2]
+#         t[0] t[1] t[2] [T/F for time reversal]
+#         ...
+#
+#     Args:
+#         filename: Path to symmetry file.
+#
+#     Returns:
+#         Tuple of (symmetry_operators, flag_global_trsymm).
+#     """
+#     symmetries = []
+#     flag_global_trsymm = True
+#
+#     with open(filename, 'r') as f:
+#         lines = f.readlines()
+#
+#     line_idx = 0
+#
+#     # Find nsymm
+#     nsymm = 0
+#     while line_idx < len(lines):
+#         line = lines[line_idx].strip().lower()
+#         if line.startswith('nsymm'):
+#             parts = line.split('=')
+#             if len(parts) >= 2:
+#                 nsymm = int(parts[1].strip())
+#             break
+#         # Check for global time reversal
+#         if 'time-reversal' in line or 'global' in line:
+#             if 'false' in line:
+#                 flag_global_trsymm = False
+#         line_idx += 1
+#
+#     line_idx += 1
+#
+#     # Read symmetry operations
+#     for _ in range(nsymm):
+#         # Skip to '---' line
+#         while line_idx < len(lines):
+#             if '---' in lines[line_idx]:
+#                 break
+#             line_idx += 1
+#         line_idx += 1
+#
+#         # Read rotation matrix
+#         rotation = np.zeros((3, 3))
+#         for i in range(3):
+#             parts = lines[line_idx].split()
+#             rotation[i] = [float(parts[0]), float(parts[1]), float(parts[2])]
+#             line_idx += 1
+#
+#         # Read translation and optional time reversal
+#         parts = lines[line_idx].split()
+#         translation = np.array([float(parts[0]), float(parts[1]), float(parts[2])])
+#         time_reversal = -1
+#         if len(parts) >= 4:
+#             tr_str = parts[3].upper()
+#             if tr_str == 'T':
+#                 time_reversal = 1
+#             elif tr_str == 'F':
+#                 time_reversal = 0
+#         line_idx += 1
+#
+#         symmetries.append(SymmetryOperator(
+#             rotation=rotation,
+#             translation=translation,
+#             time_reversal=time_reversal
+#         ))
+#
+#     return symmetries, flag_global_trsymm
+#
+#
+# def write_symmetry_file(filename: str, symmetries: List[SymmetryOperator],
+#                         flag_global_trsymm: bool = True,
+#                         space_group_info: Optional[str] = None):
+#     """Write symmetry operations to file.
+#
+#     Args:
+#         filename: Output file path.
+#         symmetries: List of symmetry operators.
+#         flag_global_trsymm: Global time reversal symmetry flag.
+#         space_group_info: Optional space group information string.
+#     """
+#     with open(filename, 'w') as f:
+#         if space_group_info:
+#             f.write(f"space group information:\n{space_group_info}\n")
+#
+#         f.write(f"global time-reversal symmetry = {'True' if flag_global_trsymm else 'False'}\n")
+#         f.write(f"nsymm = {len(symmetries)}\n")
+#
+#         for i, symm in enumerate(symmetries):
+#             f.write(f"--- {i + 1} ---\n")
+#             for j in range(3):
+#                 f.write(f"{int(round(symm.rotation[j, 0])):2d} "
+#                        f"{int(round(symm.rotation[j, 1])):2d} "
+#                        f"{int(round(symm.rotation[j, 2])):2d}\n")
+#             tr_str = ""
+#             if not flag_global_trsymm and symm.time_reversal >= 0:
+#                 tr_str = " T" if symm.time_reversal == 1 else " F"
+#             f.write(f"{symm.translation[0]:.6f} "
+#                    f"{symm.translation[1]:.6f} "
+#                    f"{symm.translation[2]:.6f}{tr_str}\n")
+#
+#
+# def format_symmetry_description(symm: SymmetryOperator, lattice: np.ndarray,
+#                                 index: int = 0) -> str:
+#     """Format a symmetry operation as a human-readable string.
+#
+#     Args:
+#         symm: Symmetry operator.
+#         lattice: Lattice vectors [3, 3].
+#         index: Symmetry index for labeling.
+#
+#     Returns:
+#         Formatted description string.
+#     """
+#     from .symmetrize._rotate import rotation_to_axis_angle
+#
+#     axis, angle, is_inversion = rotation_to_axis_angle(symm.rotation, lattice)
+#     angle_deg = np.degrees(angle)
+#
+#     if abs(angle) < 0.1 and symm.time_reversal != 1:
+#         trans_norm = np.linalg.norm(symm.translation)
+#         if trans_norm < 0.01:
+#             if is_inversion:
+#                 return f"symm{index + 1:4d}: Inversion"
+#             else:
+#                 return f"symm{index + 1:4d}: Identity"
+#
+#     desc = f"symm{index + 1:4d}:{angle_deg:6.1f} deg rot around "
+#     desc += f"({axis[0]:7.4f},{axis[1]:7.4f},{axis[2]:7.4f})"
+#
+#     trans_norm = np.linalg.norm(symm.translation)
+#     if trans_norm > 0.01:
+#         desc += f" with trans ({symm.translation[0]:7.4f} "
+#         desc += f"{symm.translation[1]:7.4f} {symm.translation[2]:7.4f})"
+#
+#     if is_inversion:
+#         if abs(abs(angle_deg) - 180) < 1.0:
+#             desc += " with inv (Mirror)"
+#         else:
+#             desc += " with inv"
+#
+#     if symm.time_reversal == 1:
+#         desc += " with TRS"
+#
+#     return desc
