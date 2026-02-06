@@ -126,7 +126,7 @@ def Y2R_R2Y(l: np.uint8) -> Tuple[NDArray, NDArray]:
         Y2R = np.eye(dim, dtype=np.complex128)
     
     # 计算逆矩阵：Y2C = C2Y^{-1}
-    R2Y = inv(Y2R)
+    R2Y = np.linalg.inv(Y2R)
     
     return Y2R, R2Y
 
@@ -167,7 +167,7 @@ def rotate_real_Ylm(l: np.uint8, axis: NDArray, alpha: float, inversion=False) -
         返回:
             (2l+1)x(2l+1)旋转矩阵。
         """
-        r2y, y2r = Y2R_R2Y_cached(l)
+        r2y, y2r = Y2R_R2Y(l)
         rot_Ylm = rotate_Ylm(l, axis, alpha, inversion)
         rot_r = r2y @ rot_Ylm @ y2r
         return rot_r
@@ -442,7 +442,11 @@ def rotation_to_axis_angle(rotation: NDArray, lattice: NDArray) -> Tuple[NDArray
     # Compute trace and angle
     trace = np.trace(rot_proper)
     # Clamp trace to [-1, 3] for numerical stability
-    trace = np.clip(trace, -1.0, 3.0)
+    if trace > 3:
+        trace = 3
+    elif trace < -1:
+        trace = -1
+    # trace = np.clip(trace, -1.0, 3.0)
     angle = np.arccos((trace - 1.0) / 2.0)
 
     # Handle 180-degree rotation specially
