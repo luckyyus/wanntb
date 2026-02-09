@@ -496,7 +496,7 @@ def find_R_vec(rv: np.ndarray, rvec_pool: np.ndarray) -> int:
         is_smaller = False
         is_equal = True
 
-        for i in range(0,3,-1): # the first index is the major one
+        for i in range(3): # the first index is the major one
             if diff[i] < 0:
                 is_smaller = True
                 is_equal = False

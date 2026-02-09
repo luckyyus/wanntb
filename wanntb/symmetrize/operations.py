@@ -5,6 +5,7 @@ to positions, finding equivalent atoms, and coordinate transformations.
 """
 
 import numpy as np
+from datetime import datetime
 from typing import Tuple, List, Dict
 from numba import njit
 try:
@@ -19,7 +20,8 @@ def get_symmetry(real_lattice: np.ndarray, positions: np.ndarray, types: np.ndar
                  magmom_str: str|None = None,
                  tol: float = DEFAULT_SYMM_TOLERANCE,
                  tol_mag: float = DEFAULT_MAGNETIC_TOLERANCE):
-
+    start = datetime.now()
+    print('---------- start get_symmetry ----------')
     symm = None
     is_magnetic = False
     if magmom_str is not None: # magnetic systems
@@ -28,10 +30,15 @@ def get_symmetry(real_lattice: np.ndarray, positions: np.ndarray, types: np.ndar
         cell = (real_lattice, positions, types, magmom)
         symm = spglib.get_magnetic_symmetry(cell, symprec=tol, mag_symprec=tol_mag)
         is_magnetic = True
+        data = spglib.get_symmetry_dataset(cell, symprec=tol)
     else: # non-magnetic systems
         cell = (real_lattice, positions, types)
-        symm = spglib.get_symmetry(cell, symprec=DEFAULT_SYMM_TOLERANCE)
-
+        symm = spglib.get_symmetry(cell, symprec=tol)
+        data = spglib.get_symmetry_dataset(cell, symprec=tol)
+    print(data.hall)
+    print(data.international)
+    print(data.site_symmetry_symbols)
+    print('time used: %24.2f <-- get_symmetry' % (datetime.now() - start).total_seconds())
     return SymmetryOperators(symm, is_magnetic=is_magnetic)
 
 
@@ -50,7 +57,6 @@ class SymmetryOperators:
     def print_symmetry(self):
         print(f'number of operators: {self.n_operators}')
         for idx in range(self.n_operators):
-            print('\n')
             print(f'No. {idx}')
             print('Rotation:')
             print(np.array2string(self.rotations[idx], precision=0, suppress_small=True))
@@ -65,10 +71,12 @@ class SymmetryOperators:
         return self.n_operators
 
     def set_disabled(self, indices):
+        self.is_enabled[:] = True
         for idx in indices:
             self.is_enabled[idx] = False
 
     def set_enabled(self, indices):
+        self.is_enabled[:] = False
         for idx in indices:
             self.is_enabled[idx] = True
 

@@ -1,8 +1,10 @@
 from typing import Tuple, List
-
+from datetime import datetime
 import numpy as np
 from numpy.typing import NDArray
 from numba import njit, prange
+from setuptools.monkey import get_unpatched
+from streamlit.web.server.server_util import get_url
 
 from .._system import TBSystem
 from ..constant import DEFAULT_POSITION_TOLERANCE, DEFAULT_HAM_TOLERANCE, DEFAULT_SYMM_TOLERANCE, EPS5
@@ -29,6 +31,7 @@ class Symmetrizer:
         print('orb_site_pos: %s %s' % (self.orb_site_pos.dtype, list(self.orb_site_pos.shape)))
         self.n_orb_sites = self.orb_site_pos.shape[0]
         self.max_orbs = max(len(idx_arr) for idx_arr in _orb_site_indices)
+        print('max_orbs: %d' % self.max_orbs)
         self.orb_site_indices = np.full((self.n_orb_sites, self.max_orbs), -1, dtype=int)
         self.orb_site_lens = np.zeros(self.n_orb_sites, dtype=int)
 
@@ -37,7 +40,8 @@ class Symmetrizer:
             n_idx = len(idx_arr)
             self.orb_site_indices[i, :n_idx] = idx_arr
             self.orb_site_lens[i] = n_idx
-
+        # print('orb_site_indices: %s' % str(self.orb_site_indices))
+        print('orb_site_lens: %s' % str(self.orb_site_lens))
         self.R_vec_pool = None
         self.n_Rpts_pool = 0
         self.site_mapping_list = None
@@ -57,6 +61,7 @@ class Symmetrizer:
     def _update_R_vec_pool(self, is_expand: bool):
         self.is_expand = is_expand
         if is_expand:
+            n_sites = self.orb_site_pos.shape[0]
             if self.site_mapping_list is None:
                 self._update_site_mapping()
             Rvec_set = set()
@@ -71,11 +76,11 @@ class Symmetrizer:
                     rv_rounded = np.round(rv_rot)
                     if np.all(np.abs(rv_rot - rv_rounded) < DEFAULT_POSITION_TOLERANCE):
                         Rvec_set.add(tuple(rv_rounded.astype(np.int16)))
-                        for a in range(self.orb_site_pos):
-                            a_tgt, v_a = self.site_mapping_list[a, 0], self.site_mapping_list[a, 1:]
+                        for a in range(n_sites):
+                            a_tgt, v_a = self.site_mapping_list[isym, a, 0], self.site_mapping_list[isym, a, 1:]
                             if a_tgt < 0: continue
-                            for b in range(self.orb_site_pos):
-                                b_tgt, v_b = self.site_mapping_list[b, 0], self.site_mapping_list[b, 1:]
+                            for b in range(n_sites):
+                                b_tgt, v_b = self.site_mapping_list[isym, b, 0], self.site_mapping_list[isym, b, 1:]
                                 if b_tgt < 0: continue
                                 R_eff = rv_rounded + v_b - v_a
                                 Rvec_set.add(tuple(np.round(R_eff).astype(np.int16)))
@@ -92,39 +97,52 @@ class Symmetrizer:
                    disable_list: List[int] | None = None,
                    enable_list: List[int] | None = None,
                    is_expand: bool = False,
-                   is_global_tr: bool = True,
+                   is_global_tr: bool = False,
                    tol: float = DEFAULT_HAM_TOLERANCE):
         """Symmetrize Hamiltonian and/or other TB operators.
             flag_tasks: list of bool: 0 - ham; 1 - r_mat; 2 - s_mat
         """
+        start = datetime.now()
+        print('---------- start symmetrize ----------')
         if disable_list is not None: self._operations.set_disabled(disable_list)
         if enable_list is not None: self._operations.set_enabled(enable_list)
         n_enabled = self._operations.n_enabled()
-        num_wann = self._system.num_wann
+        print('number of enabled operators: %d' % n_enabled)
 
+        n_orbs = self._system.num_wann
+        if self.site_mapping_list is None:
+            self._update_site_mapping()
+        # print('R_rec:')
+        # print(self._system.R_vec)
         self._update_R_vec_pool(is_expand)
-
+        # print('R_vec_pool:')
+        # print(self.R_vec_pool)
+        print('time used: %24.2f <-- update R_vec_pool' % (datetime.now() - start).total_seconds())
         self._update_u_matrices()
-
+        # print(self.u_matrices_list[0][0])
+        print('time used: %24.2f <-- update u_matrices' % (datetime.now() - start).total_seconds())
         if flag_tasks[2] and self._system.ss_R is None:
             print('ss_R data is missing but symmetrizing spin matrices is required.')
-            return
+            return None
 
         if flag_tasks[0]:
-            hams = np.zeros((n_enabled, self.n_Rpts_pool, num_wann, num_wann), dtype=np.complex128)
+            hams = np.zeros((n_enabled, self.n_Rpts_pool, n_orbs, n_orbs), dtype=np.complex128)
         if flag_tasks[1]:
-            r_mats = np.zeros((n_enabled, self.n_Rpts_pool, 3, num_wann, num_wann), dtype=np.complex128)
+            r_mats = np.zeros((n_enabled, self.n_Rpts_pool, 3, n_orbs, n_orbs), dtype=np.complex128)
         if flag_tasks[2]:
-            s_mats = np.zeros((n_enabled, self.n_Rpts_pool, 3, num_wann, num_wann), dtype=np.complex128)
-
+            s_mats = np.zeros((n_enabled, self.n_Rpts_pool, 3, n_orbs, n_orbs), dtype=np.complex128)
+        idx_enable = 0
         for isym in range(len(self._operations)):
             if not self._operations.is_enabled[isym]: continue
+            print('operator %d is enabled.' % isym)
             rotation, translation, time_reversal = self._operations[isym]
             u_matrices = self.u_matrices_list[isym]
             site_map = self.site_mapping_list[isym]
 
             is_soc_tr = True if self.is_soc and time_reversal == 1 else False
+            print('is_soc_tr: %s' % str(is_soc_tr))
             is_tr_only = (not self.is_soc and time_reversal == 1)
+            print('is_tr_only: %s' % str(is_tr_only))
             args = [self._system.R_vec, self._system.num_wann,
                     self.R_vec_pool, self.n_Rpts_pool,
                     rotation, site_map, u_matrices,
@@ -133,30 +151,38 @@ class Symmetrizer:
                     is_soc_tr, is_tr_only]
             if flag_tasks[0]:
                 args0 = [self._system.ham_R] + args
-                hams[isym] = _rotate_site_par(*args0)
+                hams[idx_enable] = _rotate_site_par(*args0)
+                print('time used: %24.2f <-- rotate Hamiltonian for symmetric operator No. %d finished' %
+                      ((datetime.now() - start).total_seconds(), isym))
             if flag_tasks[1]:
                 args1 = [self._system.r_mat_R] + args
-                r_mats[isym] = _rotate_site_par(*args1)
+                r_mats[idx_enable] = _rotate3_site_par(*args1)
+                print('time used: %24.2f <-- rotate r_matrices for symmetric operator No. %d finished' %
+                      ((datetime.now() - start).total_seconds(), isym))
             if flag_tasks[2]:
                 args2 = [self._system.ss_R] + args
-                s_mats[isym] = _rotate_site_par(*args2)
+                s_mats[idx_enable] = _rotate3_site_par(*args2)
+                print('time used: %24.2f <-- rotate spin matrices for symmetric operator No. %d finished' %
+                      ((datetime.now() - start).total_seconds(), isym))
+            idx_enable += 1
+
         # Average
         ham_out = np.sum(hams, axis=0) / n_enabled if flag_tasks[0] else None
-        r_mat_out = np.sum(r_mats, axis=0) / n_enabled if flag_tasks[0] else None
-        ss_out = np.sum(s_mats, axis=0) / n_enabled if flag_tasks[0] else None
+        r_mat_out = np.sum(r_mats, axis=0) / n_enabled if flag_tasks[1] else None
+        ss_out = np.sum(s_mats, axis=0) / n_enabled if flag_tasks[2] else None
 
-        args_expand = [self._system.R_vec, num_wann, self.R_vec_pool, self.n_Rpts_pool]
+        args_expand = [self._system.R_vec, n_orbs, self.R_vec_pool, self.n_Rpts_pool]
         if flag_tasks[0]:
             # tolerance check
             args_expand0 = [self._system.ham_R] + args_expand
-            ham_orig = _get_oo_with_expand_R_vec(*args_expand0)
+            ham_orig = _get_oo_with_expand_R_vec(*args_expand0) if is_expand else self._system.ham_R
             max_diff, max_rv = _check_tolerance_R_par(ham_orig, ham_out, self.R_vec_pool, self.n_Rpts_pool)
             if max_diff > tol:
                 print(f"WARNING: Symmetrization difference ({max_diff:.6f}) for ham_R "
                       f"exceeds tolerance ({tol:.6f}) at {max_rv}\n")
             # global time reversal
             if is_global_tr:
-                ham_out = _global_tr_symmetry_R_par(ham_out, num_wann, self.R_vec_pool, self.n_Rpts_pool,
+                ham_out = _global_tr_symmetry_R_par(ham_out, n_orbs, self.R_vec_pool, self.n_Rpts_pool,
                                                     self.spin_flip_map, self.is_soc)
 
             # hermitian
@@ -165,7 +191,7 @@ class Symmetrizer:
         if flag_tasks[1]:
             # tolerance check
             args_expand1 = [self._system.r_mat_R] + args_expand
-            r_mat_orig = _get_oo_with_expand_R_vec(*args_expand1)
+            r_mat_orig = _get_oo3_with_expand_R_vec(*args_expand1) if is_expand else self._system.r_mat_R
             max_diff, max_rv = _check_tolerance_R_par(r_mat_orig, r_mat_out, self.R_vec_pool, self.n_Rpts_pool)
             if max_diff > tol:
                 print(f"WARNING: Symmetrization difference ({max_diff:.6f}) for r_mat_R "
@@ -176,18 +202,20 @@ class Symmetrizer:
         if flag_tasks[2]:
             # tolerance check
             args_expand2 = [self._system.ss_R] + args_expand
-            ss_orig = _get_oo_with_expand_R_vec(*args_expand2)
+            ss_orig = _get_oo3_with_expand_R_vec(*args_expand2) if is_expand else self._system.ss_R
             max_diff, max_rv = _check_tolerance_R_par(ss_orig, ss_out, self.R_vec_pool, self.n_Rpts_pool)
             if max_diff > tol:
                 print(f"WARNING: Symmetrization difference ({max_diff:.6f}) for ss_R "
                       f"exceeds tolerance ({tol:.6f}) at {max_rv}\n")
             # hermitian
             ss_out = hermiization_R(ss_out, self.R_vec_pool)
+        print('time used: %24.2f <-- symmetrize' % (datetime.now() - start).total_seconds())
         return ham_out, r_mat_out, ss_out, self.R_vec_pool
 
     def _update_u_matrices(self):
 
         for isym in range(len(self._operations)):
+            # print('operator %d: ' % isym)
             rotation, translation, time_reversal = self._operations[isym]
             args = [self._system.real_lattice,
                     self.orb_site_pos, self.orb_site_indices,
@@ -196,6 +224,7 @@ class Symmetrizer:
                     rotation, translation,
                     self.is_soc, self._system.orb_is_laxis]
             u_matrices_arr = _u_matrices_site_par(*args)
+
             self.u_matrices_list.append(u_matrices_arr)
 
 
@@ -254,7 +283,7 @@ def _u_matrices_site_par(real_lattice: NDArray,
                          rotation: NDArray, translation: NDArray,
                          is_soc: bool, is_local_axis: bool) -> NDArray:
     site_map = site_mapping(real_lattice, group_positions, rotation, translation)
-    if not is_local_axis:
+    if is_local_axis:
         rot_cart = rotation_in_cart(rotation, real_lattice)
     axis, angle, is_inversion = rotation_to_axis_angle(rotation, real_lattice)
 
@@ -263,16 +292,16 @@ def _u_matrices_site_par(real_lattice: NDArray,
 
     u_matrices_arr = np.zeros((nsites, max_orbs, max_orbs), dtype=np.complex128)
     for i in prange(nsites):
-        idx_arr = group_indices[i, :group_lens[i]]
-        tgt_idx, _ = site_map[i]
+        idx_src = group_indices[i, :group_lens[i]]
+        tgt_idx = site_map[i, 0]
+        idx_tgt = group_indices[tgt_idx, :group_lens[i]]
+        # print('%d, idx_src[%d]: %s, idx_tgt[%d]: %s' % (i, i, str(idx_src), tgt_idx, str(idx_tgt)))
         if tgt_idx < 0:
             continue
-        if is_local_axis:
-            u_site = get_rotation_matrix_one_site(idx_arr, group_indices[tgt_idx, :group_lens[i]],
-                                                  orb_lmsr, L_rot, s_rot, is_soc)
+        if not is_local_axis:
+            u_site = _u_matrix_one_site(idx_src, idx_tgt, orb_lmsr, L_rot, s_rot, is_soc)
         else:
-            u_site = get_rotation_matrix_one_site_laxis(idx_arr, group_indices[tgt_idx, :group_lens[i]],
-                                                        orb_lmsr, orb_laxis, rot_cart, is_soc)
+            u_site = _u_matrix_one_site_laxis(idx_src, idx_tgt, orb_lmsr, orb_laxis, rot_cart, is_soc)
         if u_site is not None:
             r, c = u_site.shape
             u_matrices_arr[i, :r, :c] = u_site
@@ -286,15 +315,87 @@ def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
     """
     Numba optimized rotation kernel.
     """
-    shape = oo_R.shape
-    is_vec3 = True if len(shape) == 4 else False
 
     nrpt_in = R_vec.shape[0]
     nsites = site_map.shape[0]
 
     # Initialize output Hamiltonian
-    oo_out = np.zeros((n_Rpts_pool, num_wann, num_wann), dtype=np.complex128) if not is_vec3 else (
-        np.zeros((n_Rpts_pool, 3, num_wann, num_wann), dtype=np.complex128))
+    oo_out = np.zeros((n_Rpts_pool, num_wann, num_wann), dtype=np.complex128)
+
+    # Pre-calculate R_rotated = R * S^T
+    # This is done inside site loops but can be optimized
+
+    # Parallelize over sites to avoid competition on oo_out for single operation
+    # Since rotation is a bijection of sites, a_tgt is unique for each a.
+    # However, different (a, b) pairs might map to the same (a_tgt, b_tgt)
+    # if the symmetry operation has a translation. But they will map to different R.
+    # So we should be safe with prange if we are careful.
+
+    for a in prange(nsites):
+        a_tgt = site_map[a, 0]
+        if a_tgt < 0: continue
+        v_a = site_map[a, 1:]
+
+        idx_a = orb_site_indices[a, :orb_site_lens[a]]
+        idx_a_tgt = orb_site_indices[a_tgt, :orb_site_lens[a_tgt]]
+        U_a = np.ascontiguousarray(u_matrices[a, :orb_site_lens[a_tgt], :orb_site_lens[a]])
+        # print(U_a)
+        for b in range(nsites):
+            b_tgt = site_map[b, 0]
+            if b_tgt < 0: continue
+            v_b = site_map[b, 1:]
+
+            idx_b = orb_site_indices[b, :orb_site_lens[b]]
+            idx_b_tgt = orb_site_indices[b_tgt, :orb_site_lens[b_tgt]]
+            U_b_H = np.ascontiguousarray(np.conj(u_matrices[b, :orb_site_lens[b_tgt], :orb_site_lens[b]].T))
+            # print(U_b_H)
+            shift = (v_b - v_a).astype(np.float64)
+            # print(shift)
+            for ir in range(nrpt_in):
+                # R_eff = S @ R + v_b - v_a
+                rv_src = R_vec[ir].astype(np.float64)
+                rv_eff = np.rint(rotation @ rv_src + shift)
+                # Binary search for R index
+                ir_tgt = find_R_vec(rv_eff, R_vec_pool)
+                # print(ir, ir_tgt)
+                if ir_tgt < 0: continue
+                # Extract block H_ab
+                oo_block = np.zeros((len(idx_a), len(idx_b)), dtype=np.complex128)
+                for i_a in range(len(idx_a)):
+                    for i_b in range(len(idx_b)):
+                        oo_block[i_a, i_b] = oo_R[ir, idx_a[i_a], idx_b[i_b]]
+                # oo_block = oo_R[ir, idx_a, idx_b]
+
+                # Handle Magnetic Symmetry
+                if is_soc_tr:
+                    oo_block = _apply_soc_tr(oo_block, idx_a, idx_b, spin_flip_map)
+                elif is_tr_only:
+                    oo_block = np.conj(oo_block)
+
+                # Use contiguous arrays for better performance with '@'
+                oo_rot = U_a @ np.ascontiguousarray(oo_block) @ U_b_H
+
+                # Accumulate
+                # Atomic add is not directly available in prange for complex
+                # But since each (a, b, ir) contributes to a unique (a_tgt, b_tgt, ir_tgt)
+                # for a FIXED symmetry operation, we don't have race conditions here.
+                for i_a in range(len(idx_a_tgt)):
+                    for i_b in range(len(idx_b_tgt)):
+                        oo_out[ir_tgt, idx_a_tgt[i_a], idx_b_tgt[i_b]] += oo_rot[i_a, i_b]
+    return oo_out
+
+@njit(parallel=True, cache=True, nogil=True)
+def _rotate3_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
+                     rotation, site_map, u_matrices, orb_site_indices, orb_site_lens, spin_flip_map,
+                     is_soc_tr, is_tr_only):
+    """
+    Numba optimized rotation kernel.
+    """
+    nrpt_in = R_vec.shape[0]
+    nsites = site_map.shape[0]
+
+    # Initialize output Hamiltonian
+    oo_out = np.zeros((n_Rpts_pool, 3, num_wann, num_wann), dtype=np.complex128)
 
     # Pre-calculate R_rotated = R * S^T
     # This is done inside site loops but can be optimized
@@ -327,40 +428,28 @@ def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
 
             for ir in range(nrpt_in):
                 # R_eff = S @ R + v_b - v_a
-                rv_src = np.astype(R_vec[ir], np.float64)
-                rv_eff = np.floor(rotation @ rv_src + shift)
+                rv_src = R_vec[ir].astype(np.float64)
+                rv_eff = np.rint(rotation @ rv_src + shift)
 
                 # Binary search for R index
                 ir_tgt = find_R_vec(rv_eff, R_vec_pool)
                 if ir_tgt < 0: continue
-                if is_vec3:
-                    for i in range(3):
-                        oo_block = np.ascontiguousarray(oo_R[ir, i, idx_a, idx_b])
-                        if is_soc_tr:
-                            oo_block = _apply_soc_tr(oo_block, idx_a, idx_b, spin_flip_map)
-                        elif is_tr_only:
-                            oo_block = np.conj(oo_block)
-                        oo_rot = U_a @ np.ascontiguousarray(oo_block) @ U_b_H
-                        oo_out[ir_tgt, i, idx_a_tgt, idx_b_tgt] += oo_rot
-                else:
-                    # Extract block H_ab
-                    oo_block = oo_R[ir, idx_a, idx_b]
 
-                    # Handle Magnetic Symmetry
+                for i in range(3):
+                    oo_block = np.zeros((len(idx_a), len(idx_b)), dtype=np.complex128)
+                    # Numba does not support slice more than 2-D
+                    for i_a in range(len(idx_a)):
+                        for i_b in range(len(idx_b)):
+                            oo_block[i_a, i_b] = oo_R[ir, i, idx_a[i_a], idx_b[i_b]]
+                            # oo_block = np.ascontiguousarray(oo_R[ir, i, idx_a, idx_b])
                     if is_soc_tr:
                         oo_block = _apply_soc_tr(oo_block, idx_a, idx_b, spin_flip_map)
                     elif is_tr_only:
                         oo_block = np.conj(oo_block)
-
-                    # Use contiguous arrays for better performance with '@'
                     oo_rot = U_a @ np.ascontiguousarray(oo_block) @ U_b_H
-
-                    # Accumulate
-                    # Atomic add is not directly available in prange for complex
-                    # But since each (a, b, ir) contributes to a unique (a_tgt, b_tgt, ir_tgt)
-                    # for a FIXED symmetry operation, we don't have race conditions here.
-                    oo_out[ir_tgt, idx_a_tgt, idx_b_tgt] += oo_rot
-
+                    for i_a in range(len(idx_a_tgt)):
+                        for i_b in range(len(idx_b_tgt)):
+                            oo_out[ir_tgt, i, idx_a_tgt[i_a], idx_b_tgt[i_b]] += oo_rot[i_a, i_b]
     return oo_out
 
 
@@ -368,12 +457,24 @@ def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
 def _get_oo_with_expand_R_vec(oo_R: NDArray[np.complex128],
                               R_vec: NDArray[np.int16], num_wann: int,
                               R_vec_pool: NDArray[np.int16], n_Rpts_pool: int) -> NDArray[np.complex128]:
-    shape = oo_R.shape
-    is_vec3 = True if len(shape) == 4 else False
     nrpt_in = R_vec.shape[0]
+    oo_out = np.zeros((n_Rpts_pool, num_wann, num_wann), dtype=np.complex128)
 
-    oo_out = np.zeros((n_Rpts_pool, 3, num_wann, num_wann), dtype=np.complex128) if is_vec3 else (
-        np.zeros((n_Rpts_pool, num_wann, num_wann), dtype=np.complex128))
+    for ir in range(nrpt_in):
+        rv = R_vec[ir]
+        ir_tgt = find_R_vec(rv, R_vec_pool)
+        if ir_tgt < 0: continue
+        oo_out[ir_tgt] = oo_R[ir]
+
+    return oo_out
+
+@njit(cache=True, nogil=True)
+def _get_oo3_with_expand_R_vec(oo_R: NDArray[np.complex128],
+                              R_vec: NDArray[np.int16], num_wann: int,
+                              R_vec_pool: NDArray[np.int16], n_Rpts_pool: int) -> NDArray[np.complex128]:
+
+    nrpt_in = R_vec.shape[0]
+    oo_out = np.zeros((n_Rpts_pool, 3, num_wann, num_wann), dtype=np.complex128)
 
     for ir in range(nrpt_in):
         rv = R_vec[ir]
@@ -446,7 +547,7 @@ def group_orbitals_by_site(orb_pos: NDArray) -> Tuple[NDArray, List]:
 
 
 @njit(cache=True, nogil=True)
-def get_rotation_matrix_one_site(indices_src, indices_tgt, orb_lmsr, L_rot, s_rot, is_soc):
+def _u_matrix_one_site(indices_src, indices_tgt, orb_lmsr, L_rot, s_rot, is_soc):
     n_src = indices_src.shape[0]
     n_tgt = indices_tgt.shape[0]
     U = np.zeros((n_tgt, n_src), dtype=np.complex128)
@@ -482,9 +583,7 @@ def get_rotation_matrix_one_site(indices_src, indices_tgt, orb_lmsr, L_rot, s_ro
 
 
 @njit(cache=True, nogil=True)
-def get_rotation_matrix_one_site_laxis(indices_src, indices_tgt,
-                                       orb_lmsr, orb_laxis,
-                                       rot_cart, is_soc):
+def _u_matrix_one_site_laxis(indices_src, indices_tgt, orb_lmsr, orb_laxis, rot_cart, is_soc):
     n_src = indices_src.shape[0]
     n_tgt = indices_tgt.shape[0]
     U = np.zeros((n_tgt, n_src), dtype=np.complex128)

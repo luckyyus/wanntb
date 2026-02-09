@@ -1,6 +1,5 @@
 import numpy as np
 from numpy.typing import NDArray
-from scipy.linalg import expm, inv
 from typing import Tuple
 from numba import njit, types
 from numba.typed import typeddict
@@ -12,7 +11,7 @@ from ..utility import normalize_vector
 
 
 @njit(nogil=True)
-def L_matrix(l: np.uint8) -> NDArray:
+def L_matrix(l: int) -> NDArray:
     """
     生成角动量算符L_x, L_y, L_z的矩阵表示（用于球谐函数基）。
     参数:
@@ -20,7 +19,7 @@ def L_matrix(l: np.uint8) -> NDArray:
     返回:
         元组 (Lx, Ly, Lz)，每个是(2l+1)x(2l+1)的复数矩阵。
     """
-    dim = int(2 * l + 1)
+    dim = 2 * l + 1
     Lmat = np.zeros((3, dim, dim), dtype=np.complex128)
     Lz = np.zeros((dim, dim), dtype=np.complex128)
     Lp = np.zeros((dim, dim), dtype=np.complex128)  # 升算符L+
@@ -43,7 +42,7 @@ def L_matrix(l: np.uint8) -> NDArray:
     return Lmat
 
 @njit(nogil=True)
-def Y2R_R2Y(l: np.uint8) -> Tuple[NDArray, NDArray]:
+def Y2R_R2Y(l: int) -> Tuple[NDArray, NDArray]:
     """
     生成球谐函数(Ylm)和实球谐函数(Real Spherical Harmonics)之间的变换矩阵。
     
@@ -131,7 +130,7 @@ def Y2R_R2Y(l: np.uint8) -> Tuple[NDArray, NDArray]:
     return Y2R, R2Y
 
 @njit(nogil=True)
-def rotate_Ylm(l: np.uint8, axis: NDArray, alpha: float, inversion=False) -> NDArray:
+def rotate_Ylm(l: int, axis: NDArray, alpha: float, inversion=False) -> NDArray:
     """
     生成球谐函数基下的旋转矩阵。
     参数:
@@ -146,8 +145,14 @@ def rotate_Ylm(l: np.uint8, axis: NDArray, alpha: float, inversion=False) -> NDA
     # 旋转生成器: n·L
     L_dot_n = axis[0] * Lx + axis[1] * Ly + axis[2] * Lz
     # 旋转矩阵: exp(-i * alpha * n·L)
-    rot_r = expm(-1j * alpha * L_dot_n)
-    
+
+    # rot_r = expm(-1j * alpha * L_dot_n)
+    exp_n = -1j * alpha * L_dot_n / 2
+    eigenvalues, eigenvectors = np.linalg.eigh(exp_n)
+
+    # exp(M) = V @ diag(exp(eigenvalues)) @ V^{-1}
+    exp_eig = np.diag(np.exp(eigenvalues))
+    rot_r = eigenvectors @ exp_eig @ np.linalg.inv(eigenvectors)
     if inversion:
         # 反演处理：根据l的奇偶性调整符号
         if l % 2 == 1:
@@ -156,7 +161,7 @@ def rotate_Ylm(l: np.uint8, axis: NDArray, alpha: float, inversion=False) -> NDA
     return rot_r
 
 @njit(nogil=True)
-def rotate_real_Ylm(l: np.uint8, axis: NDArray, alpha: float, inversion=False) -> NDArray:
+def rotate_real_Ylm(l: int, axis: NDArray, alpha: float, inversion=False) -> NDArray:
         """
         生成实球谐函数基下的旋转矩阵。
         参数:
@@ -167,7 +172,7 @@ def rotate_real_Ylm(l: np.uint8, axis: NDArray, alpha: float, inversion=False) -
         返回:
             (2l+1)x(2l+1)旋转矩阵。
         """
-        r2y, y2r = Y2R_R2Y(l)
+        y2r, r2y = Y2R_R2Y(l)
         rot_Ylm = rotate_Ylm(l, axis, alpha, inversion)
         rot_r = r2y @ rot_Ylm @ y2r
         return rot_r
@@ -175,7 +180,7 @@ def rotate_real_Ylm(l: np.uint8, axis: NDArray, alpha: float, inversion=False) -
 @njit(nogil=True)
 def get_all_L_rotation_matrix(axis, angle, is_inversion):
     max_dim = 2 * MAX_L + 1
-    l_rot = np.zeros((MAX_L + 1, max_dim, max_dim), dtype=np.float64)
+    l_rot = np.zeros((MAX_L + 1, max_dim, max_dim), dtype=np.complex128)
     for l in range(MAX_L + 1):
         dim = 2 * l + 1
         l_rot[l, 0:dim, 0:dim] = rotate_real_Ylm(l, axis, angle, is_inversion)
@@ -183,15 +188,18 @@ def get_all_L_rotation_matrix(axis, angle, is_inversion):
 
 
 # Pre-compute transformation matrices for efficiency
-_CACHED_Y2R = typeddict.Dict.empty(types.uint8, types.complex128)
-_CACHED_R2Y = typeddict.Dict.empty(types.uint8, types.complex128)
+_CACHED_Y2R = np.zeros((MAX_L + 1, 2 * MAX_L + 1, 2 * MAX_L + 1), dtype=np.complex128)
+_CACHED_R2Y = np.zeros((MAX_L + 1, 2 * MAX_L + 1, 2 * MAX_L + 1), dtype=np.complex128)
+_CACHED_L = np.zeros(MAX_L, dtype=np.bool)
 
 @njit(nogil=True)
-def Y2R_R2Y_cached(l: np.uint8) -> Tuple[NDArray, NDArray]:
+def Y2R_R2Y_cached(l: int, _cached_y2r, _cached_r2y, _cached_l) -> Tuple[NDArray, NDArray]:
     """Get cached Ylm/real transformation matrices."""
-    if l not in _CACHED_Y2R:
-        _CACHED_Y2R[l], _CACHED_R2Y[l] = Y2R_R2Y(l)
-    return _CACHED_Y2R[l], _CACHED_R2Y[l]
+    dim = 2 * l + 1
+    if not _cached_l[l]:
+        _cached_y2r[l,0:dim,0:dim], _cached_r2y[l,0:dim,0:dim] = Y2R_R2Y(l)
+        _cached_l[l] = True
+    return _cached_y2r[l,0:dim,0:dim], _cached_r2y[l,0:dim,0:dim]
 
 @njit(nogil=True)
 def combine_rotation_with_local_axis(rotation_cart: NDArray,
@@ -240,7 +248,7 @@ def rotate_spinor(axis: NDArray, alpha: float, inversion=False) -> NDArray:
     # 计算旋转矩阵: exp(-i * alpha * (n·sigma) / 2)
     # rot_spin = expm(-1j * alpha * sigma_n / 2)
     exp_n = -1j * alpha * sigma_n / 2
-    eigenvalues, eigenvectors = np.linalg.eig(exp_n)
+    eigenvalues, eigenvectors = np.linalg.eigh(exp_n)
 
     # exp(M) = V @ diag(exp(eigenvalues)) @ V^{-1}
     exp_eig = np.diag(np.exp(eigenvalues))

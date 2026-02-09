@@ -538,7 +538,7 @@ def get_tbsystem_by_new_ham(tb_in: TBSystem, ham_R_new, r_mat_R_new, R_vec_new, 
     print('---------- start get_tbsystem_by_new_ham ----------')
     tb = TBSystem()
     tb.seedname = tb_in.seedname
-    tb.real_lattice = tb.real_lattice.copy()
+    tb.real_lattice = tb_in.real_lattice.copy()
     print('real lattice:')
     print(tb.real_lattice)
     tb.recip_lattice = np.linalg.inv(tb.real_lattice).T * TwoPi
@@ -555,7 +555,7 @@ def get_tbsystem_by_new_ham(tb_in: TBSystem, ham_R_new, r_mat_R_new, R_vec_new, 
     else:
         if n_Rpts_new == tb_in.n_Rpts: tb.r_mat_R = tb_in.r_mat_R.copy()
     assert tb.r_mat_R is not None, 'new r_mat_R is missing'
-    print('r_mat_R: %s %s' % tb.r_mat_R.dtype, list(tb.r_mat_R.shape))
+    print('r_mat_R: %s %s' % (tb.r_mat_R.dtype, list(tb.r_mat_R.shape)))
 
     if ss_R_new is not None:
         tb.ss_R = ss_R_new
@@ -656,6 +656,8 @@ def get_tbsystem_by_npz_file(npz_file='wannier90_npz.dat'):
             print('orb_laxis: %s %s' % (tb.orb_laxis.dtype, list(tb.orb_laxis.shape)))
         else:
             tb.orb_is_laxis = False
+            tb.orb_laxis = np.ones((tb.num_wann, 3, 3), np.float64)
+            print('orb_is_laxis = False')
     tb.post_init()
     print('time used: %24.2f <-- get_tbsystem_by_npz_file' % (datetime.now() - start).total_seconds())
     return tb
