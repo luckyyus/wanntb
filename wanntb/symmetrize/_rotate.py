@@ -147,11 +147,11 @@ def rotate_Ylm(l: int, axis: NDArray, alpha: float, inversion=False) -> NDArray:
     # 旋转矩阵: exp(-i * alpha * n·L)
 
     # rot_r = expm(-1j * alpha * L_dot_n)
-    exp_n = -1j * alpha * L_dot_n / 2
+    exp_n = alpha * L_dot_n / 2
     eigenvalues, eigenvectors = np.linalg.eigh(exp_n)
 
     # exp(M) = V @ diag(exp(eigenvalues)) @ V^{-1}
-    exp_eig = np.diag(np.exp(eigenvalues))
+    exp_eig = np.diag(np.exp(-1j * eigenvalues))
     rot_r = eigenvectors @ exp_eig @ np.linalg.inv(eigenvectors)
     if inversion:
         # 反演处理：根据l的奇偶性调整符号
@@ -187,7 +187,7 @@ def get_all_L_rotation_matrix(axis, angle, is_inversion):
     return l_rot
 
 
-# Pre-compute transformation matrices for efficiency
+# Pre-compute transformation matrices for efficiency (not used)
 _CACHED_Y2R = np.zeros((MAX_L + 1, 2 * MAX_L + 1, 2 * MAX_L + 1), dtype=np.complex128)
 _CACHED_R2Y = np.zeros((MAX_L + 1, 2 * MAX_L + 1, 2 * MAX_L + 1), dtype=np.complex128)
 _CACHED_L = np.zeros(MAX_L, dtype=np.bool)
@@ -247,11 +247,11 @@ def rotate_spinor(axis: NDArray, alpha: float, inversion=False) -> NDArray:
     sigma_n = axis[0] * S_[0] + axis[1] * S_[1] + axis[2] * S_[2]
     # 计算旋转矩阵: exp(-i * alpha * (n·sigma) / 2)
     # rot_spin = expm(-1j * alpha * sigma_n / 2)
-    exp_n = -1j * alpha * sigma_n / 2
+    exp_n =  alpha * sigma_n / 2
     eigenvalues, eigenvectors = np.linalg.eigh(exp_n)
 
     # exp(M) = V @ diag(exp(eigenvalues)) @ V^{-1}
-    exp_eig = np.diag(np.exp(eigenvalues))
+    exp_eig = np.diag(np.exp(-1j * eigenvalues))
     rot_spin = eigenvectors @ exp_eig @ np.linalg.inv(eigenvectors)
 
     if inversion:
@@ -260,118 +260,118 @@ def rotate_spinor(axis: NDArray, alpha: float, inversion=False) -> NDArray:
     return rot_spin
 
 
-def get_rotation_matrix(orb_pos: NDArray, orb_lmsr: NDArray, orb_laxis: NDArray,
-                        rotation: NDArray, translation: NDArray, time_reversal: NDArray,
-                        symm_index_in_double_group: int,
-                        lattice: NDArray, kpt: NDArray,
-                        is_soc: bool = False, is_laxis: bool = False
-                        ) -> NDArray:
-    """Compute symmetry operator matrix in Wannier orbital basis. (not used)
-
-    This matrix represents how Wannier orbitals at a given k-point transform
-    under a symmetry operation.
-
-    Args:
-        orb_info: List of WannOrb objects describing all orbitals.
-        symm: Symmetry operator {R|t}.
-        symm_index_in_double_group: Index in double group. For single-valued
-            group elements (0 to nsymm-1), index >= 0. For double-valued group
-            elements (additional elements due to spinor 4π periodicity),
-            index < 0 (specifically, -(original_index + 1)).
-        lattice: Lattice vectors [3, 3].
-        kpt: k-point in reciprocal coordinates [3,].
-        is_soc: If True, include spinor rotation.
-        is_laxis: If True, account for local orbital axes.
-
-    Returns:
-        Symmetry operator matrix [norb, norb] as complex array.
-    """
-    norb = len(orb_pos)
-    sym_op = np.zeros((norb, norb), dtype=np.complex128)
-
-    # Get rotation in Cartesian coordinates for axis-angle computation
-    rot_cart = rotation_in_cart(rotation, lattice)
-    axis, angle, is_inversion = rotation_to_axis_angle(rotation, lattice)
-
-    # For double group, add 2π to angle
-    if is_soc and symm_index_in_double_group < 0:
-        angle += TwoPi
-
-    # Get k' = R @ k (or -R @ k for time reversal)
-    rot_k = np.linalg.inv(rotation).T  # Rotation in reciprocal space
-    kpt_rotated = rot_k @ kpt
-    if time_reversal == 1:
-        kpt_rotated = -kpt_rotated
-
-    # Compute spinor rotation (same for all orbitals)
-    if is_soc:
-        s_rot = rotate_spinor(axis, angle)
-    else:
-        s_rot = np.eye(2, dtype=np.complex128)
-
-    # Pre-compute orbital rotation matrices for each l value for one symmetry operator
-    # orb_rot = nb.typed.Dict.empty(key_type=nb.types.uint8, value_type=nb.types.float64[:, :])
-    orb_rot = {}
-    for l in range(4):
-        orb_rot[l] = rotate_real_Ylm(l, axis, angle, is_inversion)
-
-    # Build the symmetry operator matrix
-    for io in range(norb):
-        for jo in range(norb):
-            # Check if angular momentum matches
-            if orb_lmsr[io, 0] != orb_lmsr[jo, 0]:
-            # if orb_info[io].l != orb_info[jo].l:
-                continue
-
-            # Transform site j under symmetry
-            tau_j_transformed = rotation @ orb_pos[jo] + translation
-
-            # Find which orbital site this maps to (with lattice translation)
-            idx, rvec = find_equivalent_atom(tau_j_transformed, orb_pos, lattice)
-
-            # tau' should equal tau_i (modulo lattice vector)
-            if idx < 0 or not np.allclose(orb_pos[idx], orb_pos[io], atol=EPS5):
-                continue
-
-            # Get orbital indices
-            l = orb_lmsr[jo, 0]
-            # ml is 0-indexed
-            mr_i = orb_lmsr[io, 1]
-            mr_j = orb_lmsr[jo, 1]
-            # ms is 0-up, 1-down
-            ms_i = orb_lmsr[io, 2]
-            ms_j = orb_lmsr[jo, 2]
-
-            # Handle local axes if needed
-            if is_laxis:
-                # Combine rotation with local axis transformation
-                axis_j = orb_laxis[jo]
-                axis_i = orb_laxis[io]
-                rot_combined = combine_rotation_with_local_axis(
-                    rot_cart, axis_j, axis_i
-                )
-                # Recompute axis-angle for combined rotation
-                la_axis, la_angle, la_inv = rotation_to_axis_angle(
-                    rot_combined,
-                    np.eye(3)  # Already in Cartesian
-                )
-                orb_rot_local = rotate_real_Ylm(l, la_axis, la_angle, la_inv)
-                orb_elem = orb_rot_local[mr_i, mr_j]
-            else:
-                orb_elem = orb_rot[l][mr_i, mr_j]
-
-            # Spinor element
-            spin_elem = s_rot[ms_i, ms_j]
-
-            # Phase factor: exp(-2πi k' · (R_vec - t))
-            # where R_vec is the lattice translation needed
-            phase_arg = np.dot(kpt_rotated, rvec - translation)
-            phase = np.exp(-1j * TwoPi * phase_arg)
-
-            # Total matrix element
-            sym_op[io, jo] = phase * orb_elem * spin_elem
-
-    return sym_op
+# def get_rotation_matrix(orb_pos: NDArray, orb_lmsr: NDArray, orb_laxis: NDArray,
+#                         rotation: NDArray, translation: NDArray, time_reversal: NDArray,
+#                         symm_index_in_double_group: int,
+#                         lattice: NDArray, kpt: NDArray,
+#                         is_soc: bool = False, is_laxis: bool = False
+#                         ) -> NDArray:
+#     """Compute symmetry operator matrix in Wannier orbital basis. (not used)
+#
+#     This matrix represents how Wannier orbitals at a given k-point transform
+#     under a symmetry operation.
+#
+#     Args:
+#         orb_info: List of WannOrb objects describing all orbitals.
+#         symm: Symmetry operator {R|t}.
+#         symm_index_in_double_group: Index in double group. For single-valued
+#             group elements (0 to nsymm-1), index >= 0. For double-valued group
+#             elements (additional elements due to spinor 4π periodicity),
+#             index < 0 (specifically, -(original_index + 1)).
+#         lattice: Lattice vectors [3, 3].
+#         kpt: k-point in reciprocal coordinates [3,].
+#         is_soc: If True, include spinor rotation.
+#         is_laxis: If True, account for local orbital axes.
+#
+#     Returns:
+#         Symmetry operator matrix [norb, norb] as complex array.
+#     """
+#     norb = len(orb_pos)
+#     sym_op = np.zeros((norb, norb), dtype=np.complex128)
+#
+#     # Get rotation in Cartesian coordinates for axis-angle computation
+#     rot_cart = rotation_in_cart(rotation, lattice)
+#     axis, angle, is_inversion = rotation_to_axis_angle(rotation, lattice)
+#
+#     # For double group, add 2π to angle
+#     if is_soc and symm_index_in_double_group < 0:
+#         angle += TwoPi
+#
+#     # Get k' = R @ k (or -R @ k for time reversal)
+#     rot_k = np.linalg.inv(rotation).T  # Rotation in reciprocal space
+#     kpt_rotated = rot_k @ kpt
+#     if time_reversal == 1:
+#         kpt_rotated = -kpt_rotated
+#
+#     # Compute spinor rotation (same for all orbitals)
+#     if is_soc:
+#         s_rot = rotate_spinor(axis, angle)
+#     else:
+#         s_rot = np.eye(2, dtype=np.complex128)
+#
+#     # Pre-compute orbital rotation matrices for each l value for one symmetry operator
+#     # orb_rot = nb.typed.Dict.empty(key_type=nb.types.uint8, value_type=nb.types.float64[:, :])
+#     orb_rot = {}
+#     for l in range(4):
+#         orb_rot[l] = rotate_real_Ylm(l, axis, angle, is_inversion)
+#
+#     # Build the symmetry operator matrix
+#     for io in range(norb):
+#         for jo in range(norb):
+#             # Check if angular momentum matches
+#             if orb_lmsr[io, 0] != orb_lmsr[jo, 0]:
+#             # if orb_info[io].l != orb_info[jo].l:
+#                 continue
+#
+#             # Transform site j under symmetry
+#             tau_j_transformed = rotation @ orb_pos[jo] + translation
+#
+#             # Find which orbital site this maps to (with lattice translation)
+#             idx, rvec = find_equivalent_atom(tau_j_transformed, orb_pos, lattice)
+#
+#             # tau' should equal tau_i (modulo lattice vector)
+#             if idx < 0 or not np.allclose(orb_pos[idx], orb_pos[io], atol=EPS5):
+#                 continue
+#
+#             # Get orbital indices
+#             l = orb_lmsr[jo, 0]
+#             # ml is 0-indexed
+#             mr_i = orb_lmsr[io, 1]
+#             mr_j = orb_lmsr[jo, 1]
+#             # ms is 0-up, 1-down
+#             ms_i = orb_lmsr[io, 2]
+#             ms_j = orb_lmsr[jo, 2]
+#
+#             # Handle local axes if needed
+#             if is_laxis:
+#                 # Combine rotation with local axis transformation
+#                 axis_j = orb_laxis[jo]
+#                 axis_i = orb_laxis[io]
+#                 rot_combined = combine_rotation_with_local_axis(
+#                     rot_cart, axis_j, axis_i
+#                 )
+#                 # Recompute axis-angle for combined rotation
+#                 la_axis, la_angle, la_inv = rotation_to_axis_angle(
+#                     rot_combined,
+#                     np.eye(3)  # Already in Cartesian
+#                 )
+#                 orb_rot_local = rotate_real_Ylm(l, la_axis, la_angle, la_inv)
+#                 orb_elem = orb_rot_local[mr_i, mr_j]
+#             else:
+#                 orb_elem = orb_rot[l][mr_i, mr_j]
+#
+#             # Spinor element
+#             spin_elem = s_rot[ms_i, ms_j]
+#
+#             # Phase factor: exp(-2πi k' · (R_vec - t))
+#             # where R_vec is the lattice translation needed
+#             phase_arg = np.dot(kpt_rotated, rvec - translation)
+#             phase = np.exp(-1j * TwoPi * phase_arg)
+#
+#             # Total matrix element
+#             sym_op[io, jo] = phase * orb_elem * spin_elem
+#
+#     return sym_op
 
 
 @njit(nogil=True)

@@ -172,9 +172,11 @@ class Symmetrizer:
         ss_out = np.sum(s_mats, axis=0) / n_enabled if flag_tasks[2] else None
 
         args_expand = [self._system.R_vec, n_orbs, self.R_vec_pool, self.n_Rpts_pool]
+        args_expand0 = [self._system.ham_R] + args_expand
+        args_expand1 = [self._system.r_mat_R] + args_expand
+        args_expand2 = [self._system.ss_R] + args_expand
         if flag_tasks[0]:
             # tolerance check
-            args_expand0 = [self._system.ham_R] + args_expand
             ham_orig = _get_oo_with_expand_R_vec(*args_expand0) if is_expand else self._system.ham_R
             max_diff, max_rv = _check_tolerance_R_par(ham_orig, ham_out, self.R_vec_pool, self.n_Rpts_pool)
             if max_diff > tol:
@@ -187,10 +189,11 @@ class Symmetrizer:
 
             # hermitian
             ham_out = hermiization_R(ham_out, self.R_vec_pool)
+        else:
+            ham_out = _get_oo_with_expand_R_vec(*args_expand0) if is_expand else self._system.ham_R
 
         if flag_tasks[1]:
             # tolerance check
-            args_expand1 = [self._system.r_mat_R] + args_expand
             r_mat_orig = _get_oo3_with_expand_R_vec(*args_expand1) if is_expand else self._system.r_mat_R
             max_diff, max_rv = _check_tolerance_R_par(r_mat_orig, r_mat_out, self.R_vec_pool, self.n_Rpts_pool)
             if max_diff > tol:
@@ -198,10 +201,11 @@ class Symmetrizer:
                       f"exceeds tolerance ({tol:.6f}) at {max_rv}\n")
             # hermitian
             r_mat_out = hermiization_R(r_mat_out, self.R_vec_pool)
+        else:
+            r_mat_out = _get_oo3_with_expand_R_vec(*args_expand1) if is_expand else self._system.r_mat_R
 
         if flag_tasks[2]:
             # tolerance check
-            args_expand2 = [self._system.ss_R] + args_expand
             ss_orig = _get_oo3_with_expand_R_vec(*args_expand2) if is_expand else self._system.ss_R
             max_diff, max_rv = _check_tolerance_R_par(ss_orig, ss_out, self.R_vec_pool, self.n_Rpts_pool)
             if max_diff > tol:
@@ -209,6 +213,9 @@ class Symmetrizer:
                       f"exceeds tolerance ({tol:.6f}) at {max_rv}\n")
             # hermitian
             ss_out = hermiization_R(ss_out, self.R_vec_pool)
+        else:
+            if self._system.ss_R is not None:
+                ss_out = _get_oo3_with_expand_R_vec(*args_expand2) if is_expand else self._system.ss_R
         print('time used: %24.2f <-- symmetrize' % (datetime.now() - start).total_seconds())
         return ham_out, r_mat_out, ss_out, self.R_vec_pool
 
@@ -285,9 +292,9 @@ def _u_matrices_site_par(real_lattice: NDArray,
     site_map = site_mapping(real_lattice, group_positions, rotation, translation)
     if is_local_axis:
         rot_cart = rotation_in_cart(rotation, real_lattice)
-    axis, angle, is_inversion = rotation_to_axis_angle(rotation, real_lattice)
+    axis, angle, is_inv = rotation_to_axis_angle(rotation, real_lattice)
 
-    L_rot = get_all_L_rotation_matrix(axis, angle, is_inversion)
+    L_rot = get_all_L_rotation_matrix(axis, angle, is_inv)
     s_rot = rotate_spinor(axis, angle) if is_soc else np.eye(2, dtype=np.complex128)
 
     u_matrices_arr = np.zeros((nsites, max_orbs, max_orbs), dtype=np.complex128)
@@ -308,7 +315,7 @@ def _u_matrices_site_par(real_lattice: NDArray,
     return u_matrices_arr
 
 
-@njit(parallel=True, cache=True, nogil=True)
+# @njit(parallel=True, cache=True, nogil=True)
 def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                      rotation, site_map, u_matrices, orb_site_indices, orb_site_lens, spin_flip_map,
                      is_soc_tr, is_tr_only):
@@ -339,7 +346,10 @@ def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
         idx_a = orb_site_indices[a, :orb_site_lens[a]]
         idx_a_tgt = orb_site_indices[a_tgt, :orb_site_lens[a_tgt]]
         U_a = np.ascontiguousarray(u_matrices[a, :orb_site_lens[a_tgt], :orb_site_lens[a]])
-        # print(U_a)
+        # print(U_a.shape)
+        # oo_
+        # block always square shape
+
         for b in range(nsites):
             b_tgt = site_map[b, 0]
             if b_tgt < 0: continue
@@ -348,19 +358,21 @@ def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
             idx_b = orb_site_indices[b, :orb_site_lens[b]]
             idx_b_tgt = orb_site_indices[b_tgt, :orb_site_lens[b_tgt]]
             U_b_H = np.ascontiguousarray(np.conj(u_matrices[b, :orb_site_lens[b_tgt], :orb_site_lens[b]].T))
-            # print(U_b_H)
+            if U_a.shape != U_b_H.shape: print(U_a.shape, U_b_H.shape)
             shift = (v_b - v_a).astype(np.float64)
             # print(shift)
+            oo_block = np.zeros((len(idx_a), len(idx_b)), dtype=np.complex128)
             for ir in range(nrpt_in):
                 # R_eff = S @ R + v_b - v_a
                 rv_src = R_vec[ir].astype(np.float64)
                 rv_eff = np.rint(rotation @ rv_src + shift)
+                # print(rv_src, rv_eff)
                 # Binary search for R index
                 ir_tgt = find_R_vec(rv_eff, R_vec_pool)
                 # print(ir, ir_tgt)
                 if ir_tgt < 0: continue
+
                 # Extract block H_ab
-                oo_block = np.zeros((len(idx_a), len(idx_b)), dtype=np.complex128)
                 for i_a in range(len(idx_a)):
                     for i_b in range(len(idx_b)):
                         oo_block[i_a, i_b] = oo_R[ir, idx_a[i_a], idx_b[i_b]]
@@ -381,7 +393,7 @@ def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                 # for a FIXED symmetry operation, we don't have race conditions here.
                 for i_a in range(len(idx_a_tgt)):
                     for i_b in range(len(idx_b_tgt)):
-                        oo_out[ir_tgt, idx_a_tgt[i_a], idx_b_tgt[i_b]] += oo_rot[i_a, i_b]
+                        oo_out[ir_tgt, idx_a_tgt[i_a], idx_b_tgt[i_b]] = oo_rot[i_a, i_b]
     return oo_out
 
 @njit(parallel=True, cache=True, nogil=True)

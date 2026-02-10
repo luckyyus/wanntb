@@ -270,7 +270,7 @@ def get_eig_for_kpts_kpar(ham_R, R_vec, R_cartT, num_wann, kpts):
     for ik in prange(nkpts):
         kpt = kpts[ik]
         fac = fourier_phase_R_to_k(R_vec, kpt)
-        ham_k = fourier_R_to_k(ham_R, R_cartT, fac)[0]
+        ham_k = fourier_R_to_k(ham_R, R_cartT, fac, iout=[5])[0]
         eig, uu = np.linalg.eigh(ham_k)
         eigs[ik, :] = eig
     return eigs
