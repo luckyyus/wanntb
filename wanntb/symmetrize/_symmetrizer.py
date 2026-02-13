@@ -3,8 +3,6 @@ from datetime import datetime
 import numpy as np
 from numpy.typing import NDArray
 from numba import njit, prange
-from setuptools.monkey import get_unpatched
-from streamlit.web.server.server_util import get_url
 
 from .._system import TBSystem
 from ..constant import DEFAULT_POSITION_TOLERANCE, DEFAULT_HAM_TOLERANCE, DEFAULT_SYMM_TOLERANCE, EPS5
@@ -315,7 +313,7 @@ def _u_matrices_site_par(real_lattice: NDArray,
     return u_matrices_arr
 
 
-# @njit(parallel=True, cache=True, nogil=True)
+@njit(parallel=True, cache=True, nogil=True)
 def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                      rotation, site_map, u_matrices, orb_site_indices, orb_site_lens, spin_flip_map,
                      is_soc_tr, is_tr_only):
@@ -358,7 +356,7 @@ def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
             idx_b = orb_site_indices[b, :orb_site_lens[b]]
             idx_b_tgt = orb_site_indices[b_tgt, :orb_site_lens[b_tgt]]
             U_b_H = np.ascontiguousarray(np.conj(u_matrices[b, :orb_site_lens[b_tgt], :orb_site_lens[b]].T))
-            if U_a.shape != U_b_H.shape: print(U_a.shape, U_b_H.shape)
+            # if U_a.shape != U_b_H.shape: print(U_a.shape, U_b_H.shape)
             shift = (v_b - v_a).astype(np.float64)
             # print(shift)
             oo_block = np.zeros((len(idx_a), len(idx_b)), dtype=np.complex128)
