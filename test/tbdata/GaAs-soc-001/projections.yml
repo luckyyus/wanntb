@@ -1,0 +1,8 @@
+- element: Ga
+  orb_names:
+    - s
+    - p
+- element: As
+  orb_names:
+    - s
+    - p

@@ -101,7 +101,7 @@ def _get_omega_gmat(Ah_ak, Ah_bk, f, num_wann):
                 fo_k[i, m_, n_] = np.sum(g * (Ah_ak[I_A[i], m_, :] * Ah_bk[I_B[i], :, n_]
                                               - Ah_ak[I_A[i], :, n_] * Ah_bk[I_B[i], m_, :]))
         # fo_k[i,:,:] += -(Ah_ak[I_A[i], :, :] @ Ah_bk[I_B[i], :, :] - Ah_bk[I_B[i], :, :] @ Ah_ak[I_A[i], :, :])
-    fo_k *= 1.0j
+    fo_k *= 2.0j
     return fo_k
 
 @njit(nogil=True)
@@ -464,7 +464,7 @@ def get_OHE_kpar_kmesh_fermi(ham_R, r_mat_R, R_vec, _R_cartT, num_wann, kpts, ef
 
 # Move from _axion_angle.py (Deleted)
 @njit(parallel=True, nogil=True)
-def axion_fermi(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpts, efs, eta, subwf=None):
+def axion_fermi(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpts, efs, eta, mode, subwf=None):
     nkpts = kpts.shape[0]
     n_ef = efs.shape[0]
     results_ef = np.zeros((n_ef, nkpts), dtype=np.float64)
@@ -472,15 +472,31 @@ def axion_fermi(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpts, efs, eta, subwf=
     for ik in prange(nkpts):
         kpt = kpts[ik]
         eig, uu, Ah_ak, Ah_bk, _ = _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann,eta, kpt, subwf=subwf)
-
+        # Ah_ak and Ah_bk are hermitian operators
         for i in range(n_ef):
             ef = efs[i]
             f = occ_fermi(eig, ef, eta)
-            og_mat = _get_omega_gmat(Ah_bk, Ah_bk, f, num_wann)
-            p_dot_Ah = (Ah_ak[2] + Ah_ak[2].T.conj()) * 0.5
-            theta_k = np.sum(np.diag(p_dot_Ah @ og_mat[2]).real * f)
-            # theta_k = np.diag(og_mat[2]).real * f
-            results_ef[i, ik] = theta_k
+            if mode == 0:
+                og_mat = _get_omega_gmat(Ah_bk, Ah_bk, f, num_wann)
+                # p_dot_Ah = (Ah_ak[2] + Ah_ak[2].T.conj()) * 0.5
+                theta_k = np.sum(np.diag(Ah_ak[2] @ og_mat[2]).real * f)
+                results_ef[i, ik] = theta_k
+            elif mode == 1:
+                og_mat = _get_omega_gmat(Ah_ak, Ah_bk, f, num_wann)
+                theta_k = np.sum(np.diag(Ah_bk[2] @ og_mat[2]).real * f)
+                results_ef[i, ik] = theta_k
+            elif mode == 2:
+                og = _get_f_omega(Ah_bk, Ah_bk, f, num_wann)
+                theta_k = np.diag(Ah_ak[2]).real * og[2]
+                results_ef[i, ik] = theta_k
+            elif mode == 3:
+                og = _get_f_omega(Ah_ak, Ah_bk, f, num_wann)
+                theta_k = np.diag(Ah_bk[2]).real * og[2]
+                results_ef[i, ik] = theta_k
+            else:
+                og_mat = _get_omega_gmat(Ah_bk, Ah_bk, f, num_wann)
+                theta_k = np.diag(og_mat[2]).real * f
+                results_ef[i, ik] = theta_k
 
     # 归一化：结果实部除以 (-4 * pi * nkpts) 结果为 以 2pi为单位值
     return np.sum(results_ef, axis=1) * TwoPi / (-2.0 * nkpts)

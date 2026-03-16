@@ -5,8 +5,8 @@ from numba import njit, types
 from numba.typed import typeddict
 
 
-from ..constant import S_, TwoPi, V2, EPS5, EPS6, MAX_L
-from .operations import find_equivalent_atom
+from ..constant import S_, TwoPi, V2, EPS6, MAX_L
+
 from ..utility import normalize_vector
 
 
@@ -36,7 +36,7 @@ def L_matrix(l: int) -> NDArray:
     
     # Lx = (L+ + L-)/2, Ly = (L+ - L-)/(2j)
     Lmat[0] = (Lp + Lm) / 2
-    Lmat[1] = (Lp - Lm) / (2j)
+    Lmat[1] = (Lp - Lm) / 2.0j
     Lmat[2] = Lz
     
     return Lmat
@@ -125,7 +125,7 @@ def Y2R_R2Y(l: int) -> Tuple[NDArray, NDArray]:
         Y2R = np.eye(dim, dtype=np.complex128)
     
     # 计算逆矩阵：Y2C = C2Y^{-1}
-    R2Y = np.linalg.inv(Y2R)
+    R2Y = np.conj(Y2R.T) # np.linalg.inv(Y2R)
     
     return Y2R, R2Y
 
@@ -147,12 +147,12 @@ def rotate_Ylm(l: int, axis: NDArray, alpha: float, inversion=False) -> NDArray:
     # 旋转矩阵: exp(-i * alpha * n·L)
 
     # rot_r = expm(-1j * alpha * L_dot_n)
-    exp_n = alpha * L_dot_n / 2
+    exp_n = alpha * L_dot_n
     eigenvalues, eigenvectors = np.linalg.eigh(exp_n)
 
-    # exp(M) = V @ diag(exp(eigenvalues)) @ V^{-1}
+    # exp(M) = V @ diag(exp(-i * eigenvalues)) @ V^{-1}
     exp_eig = np.diag(np.exp(-1j * eigenvalues))
-    rot_r = eigenvectors @ exp_eig @ np.linalg.inv(eigenvectors)
+    rot_r = eigenvectors @ exp_eig @ np.conj(eigenvectors.T)
     if inversion:
         # 反演处理：根据l的奇偶性调整符号
         if l % 2 == 1:
@@ -187,19 +187,19 @@ def get_all_L_rotation_matrix(axis, angle, is_inversion):
     return l_rot
 
 
-# Pre-compute transformation matrices for efficiency (not used)
-_CACHED_Y2R = np.zeros((MAX_L + 1, 2 * MAX_L + 1, 2 * MAX_L + 1), dtype=np.complex128)
-_CACHED_R2Y = np.zeros((MAX_L + 1, 2 * MAX_L + 1, 2 * MAX_L + 1), dtype=np.complex128)
-_CACHED_L = np.zeros(MAX_L, dtype=np.bool)
-
-@njit(nogil=True)
-def Y2R_R2Y_cached(l: int, _cached_y2r, _cached_r2y, _cached_l) -> Tuple[NDArray, NDArray]:
-    """Get cached Ylm/real transformation matrices."""
-    dim = 2 * l + 1
-    if not _cached_l[l]:
-        _cached_y2r[l,0:dim,0:dim], _cached_r2y[l,0:dim,0:dim] = Y2R_R2Y(l)
-        _cached_l[l] = True
-    return _cached_y2r[l,0:dim,0:dim], _cached_r2y[l,0:dim,0:dim]
+# # Pre-compute transformation matrices for efficiency (not used)
+# _CACHED_Y2R = np.zeros((MAX_L + 1, 2 * MAX_L + 1, 2 * MAX_L + 1), dtype=np.complex128)
+# _CACHED_R2Y = np.zeros((MAX_L + 1, 2 * MAX_L + 1, 2 * MAX_L + 1), dtype=np.complex128)
+# _CACHED_L = np.zeros(MAX_L, dtype=np.bool)
+#
+# @njit(nogil=True)
+# def Y2R_R2Y_cached(l: int, _cached_y2r, _cached_r2y, _cached_l) -> Tuple[NDArray, NDArray]:
+#     """Get cached Ylm/real transformation matrices."""
+#     dim = 2 * l + 1
+#     if not _cached_l[l]:
+#         _cached_y2r[l,0:dim,0:dim], _cached_r2y[l,0:dim,0:dim] = Y2R_R2Y(l)
+#         _cached_l[l] = True
+#     return _cached_y2r[l,0:dim,0:dim], _cached_r2y[l,0:dim,0:dim]
 
 @njit(nogil=True)
 def combine_rotation_with_local_axis(rotation_cart: NDArray,
@@ -252,7 +252,7 @@ def rotate_spinor(axis: NDArray, alpha: float, inversion=False) -> NDArray:
 
     # exp(M) = V @ diag(exp(eigenvalues)) @ V^{-1}
     exp_eig = np.diag(np.exp(-1j * eigenvalues))
-    rot_spin = eigenvectors @ exp_eig @ np.linalg.inv(eigenvectors)
+    rot_spin = eigenvectors @ exp_eig @ np.conj(eigenvectors.T)
 
     if inversion:
         rot_spin *= -1j  # inv时乘以-i
@@ -428,9 +428,7 @@ def rotation_to_axis_angle(rotation: NDArray, lattice: NDArray) -> Tuple[NDArray
     """
     # Convert to Cartesian coordinates
     # R_cart = lattice^T @ R_direct @ lattice^{-T}
-    lattice_t = lattice.T
-    lattice_inv_t = np.linalg.inv(lattice_t)
-    rot_cart = lattice_t @ rotation @ lattice_inv_t
+    rot_cart = rotation_in_cart(rotation, lattice)
 
     # Compute determinant to check for inversion
     det = np.linalg.det(rot_cart)
@@ -448,17 +446,15 @@ def rotation_to_axis_angle(rotation: NDArray, lattice: NDArray) -> Tuple[NDArray
         return np.array([0., 0., 1.]), 0.0, True
 
     # Compute trace and angle
-    trace = np.trace(rot_proper)
-    # Clamp trace to [-1, 3] for numerical stability
-    if trace > 3:
-        trace = 3
-    elif trace < -1:
-        trace = -1
-    # trace = np.clip(trace, -1.0, 3.0)
-    angle = np.arccos((trace - 1.0) / 2.0)
+    trace = np.trace(rot_proper) - 1
+    if trace > 2:
+        trace = 2
+    elif trace < -2:
+        trace = -2
+    angle = np.arccos(trace / 2.0)
 
     # Handle 180-degree rotation specially
-    if np.abs(angle - np.pi) < EPS5:
+    if np.abs(angle - np.pi) < EPS6:
         # Find eigenvector with eigenvalue 1
         eigvals, eigvecs = np.linalg.eig(rot_proper)
         idx = np.argmin(np.abs(eigvals - 1.0))
@@ -493,7 +489,7 @@ def rotation_to_axis_angle(rotation: NDArray, lattice: NDArray) -> Tuple[NDArray
         angle = -angle
 
     # Ensure angle in (-π, π]
-    if angle < -np.pi + EPS5:
+    if angle < -np.pi + EPS6:
         angle += TwoPi
 
     return axis, angle, is_inversion

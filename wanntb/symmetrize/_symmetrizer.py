@@ -24,6 +24,7 @@ class Symmetrizer:
                                                            tol=symprec)
         self._operations.print_symmetry()
         self.is_soc = is_soc
+
         # process orbital sites data (positions, indices and the length)
         self.orb_site_pos, _orb_site_indices = group_orbitals_by_site(self._system.orb_pos)
         print('orb_site_pos: %s %s' % (self.orb_site_pos.dtype, list(self.orb_site_pos.shape)))
@@ -32,7 +33,6 @@ class Symmetrizer:
         print('max_orbs: %d' % self.max_orbs)
         self.orb_site_indices = np.full((self.n_orb_sites, self.max_orbs), -1, dtype=int)
         self.orb_site_lens = np.zeros(self.n_orb_sites, dtype=int)
-
         for i in range(self.n_orb_sites):
             idx_arr = _orb_site_indices[i]
             n_idx = len(idx_arr)
@@ -40,27 +40,30 @@ class Symmetrizer:
             self.orb_site_lens[i] = n_idx
         # print('orb_site_indices: %s' % str(self.orb_site_indices))
         print('orb_site_lens: %s' % str(self.orb_site_lens))
+
         self.R_vec_pool = None
         self.n_Rpts_pool = 0
-        self.site_mapping_list = None
+        self.site_maps = None
         self.spin_flip_map = spin_flip_mapping(self._system.orb_pos, self._system.orb_lmsr)
+        # print(self.spin_flip_map)
         self.is_expand = False
         self.u_matrices_list = []
 
     def _update_site_mapping(self):
         n_op = len(self._operations)
-        self.site_mapping_list = np.zeros((n_op, self.n_orb_sites, 4), dtype=np.int_)
+        self.site_maps = np.zeros((n_op, self.n_orb_sites, 4), dtype=np.int_)
         for i in range(len(self._operations)):
             rotation, translation, time_reversal = self._operations[i]
-            self.site_mapping_list[i] = site_mapping(self._system.real_lattice, self.orb_site_pos,
-                                                     rotation, translation)
+            self.site_maps[i] = site_mapping(self._system.real_lattice, self.orb_site_pos,
+                                             rotation, translation)
+            # print(self.site_maps[i])
         return
 
     def _update_R_vec_pool(self, is_expand: bool):
         self.is_expand = is_expand
         if is_expand:
             n_sites = self.orb_site_pos.shape[0]
-            if self.site_mapping_list is None:
+            if self.site_maps is None:
                 self._update_site_mapping()
             Rvec_set = set()
             for ir in range(self._system.n_Rpts):
@@ -75,10 +78,10 @@ class Symmetrizer:
                     if np.all(np.abs(rv_rot - rv_rounded) < DEFAULT_POSITION_TOLERANCE):
                         Rvec_set.add(tuple(rv_rounded.astype(np.int16)))
                         for a in range(n_sites):
-                            a_tgt, v_a = self.site_mapping_list[isym, a, 0], self.site_mapping_list[isym, a, 1:]
+                            a_tgt, v_a = self.site_maps[isym, a, 0], self.site_maps[isym, a, 1:]
                             if a_tgt < 0: continue
                             for b in range(n_sites):
-                                b_tgt, v_b = self.site_mapping_list[isym, b, 0], self.site_mapping_list[isym, b, 1:]
+                                b_tgt, v_b = self.site_maps[isym, b, 0], self.site_maps[isym, b, 1:]
                                 if b_tgt < 0: continue
                                 R_eff = rv_rounded + v_b - v_a
                                 Rvec_set.add(tuple(np.round(R_eff).astype(np.int16)))
@@ -108,7 +111,7 @@ class Symmetrizer:
         print('number of enabled operators: %d' % n_enabled)
 
         n_orbs = self._system.num_wann
-        if self.site_mapping_list is None:
+        if self.site_maps is None:
             self._update_site_mapping()
         # print('R_rec:')
         # print(self._system.R_vec)
@@ -117,7 +120,7 @@ class Symmetrizer:
         # print(self.R_vec_pool)
         print('time used: %24.2f <-- update R_vec_pool' % (datetime.now() - start).total_seconds())
         self._update_u_matrices()
-        # print(self.u_matrices_list[0][0])
+
         print('time used: %24.2f <-- update u_matrices' % (datetime.now() - start).total_seconds())
         if flag_tasks[2] and self._system.ss_R is None:
             print('ss_R data is missing but symmetrizing spin matrices is required.')
@@ -135,7 +138,7 @@ class Symmetrizer:
             print('operator %d is enabled.' % isym)
             rotation, translation, time_reversal = self._operations[isym]
             u_matrices = self.u_matrices_list[isym]
-            site_map = self.site_mapping_list[isym]
+            site_map = self.site_maps[isym]
 
             is_soc_tr = True if self.is_soc and time_reversal == 1 else False
             print('is_soc_tr: %s' % str(is_soc_tr))
@@ -223,15 +226,17 @@ class Symmetrizer:
             # print('operator %d: ' % isym)
             rotation, translation, time_reversal = self._operations[isym]
             args = [self._system.real_lattice,
-                    self.orb_site_pos, self.orb_site_indices,
-                    self.orb_site_lens, self.n_orb_sites, self.max_orbs,
+                    self.orb_site_indices,
+                    self.orb_site_lens, self.site_maps[isym],
+                    self.n_orb_sites, self.max_orbs,
                     self._system.orb_lmsr, self._system.orb_laxis,
                     rotation, translation,
                     self.is_soc, self._system.orb_is_laxis]
             u_matrices_arr = _u_matrices_site_par(*args)
 
             self.u_matrices_list.append(u_matrices_arr)
-
+        # print(self.u_matrices_list[2][0])
+        np.savetxt('u_2.txt', self.u_matrices_list[2][0], fmt='%8.4f')
 
 @njit(parallel=True, cache=True, nogil=True)
 def _check_tolerance_R_par(oo_orig, oo_symm, R_vec_pool, n_rpts):
@@ -280,33 +285,32 @@ def _global_tr_symmetry_R_par(oo, num_wann, R_vec, n_rpts, spin_flip_map, is_soc
     return _oo
 
 
-@njit(parallel=True, cache=True, nogil=True)
+# @njit(parallel=True, cache=True, nogil=True)
 def _u_matrices_site_par(real_lattice: NDArray,
-                         group_positions: NDArray, group_indices: NDArray, group_lens: NDArray,
+                         site_indices: NDArray, site_lens: NDArray, site_map: NDArray,
                          nsites: int, max_orbs: int,
                          orb_lmsr: NDArray, orb_laxis: NDArray,
                          rotation: NDArray, translation: NDArray,
                          is_soc: bool, is_local_axis: bool) -> NDArray:
-    site_map = site_mapping(real_lattice, group_positions, rotation, translation)
     if is_local_axis:
         rot_cart = rotation_in_cart(rotation, real_lattice)
     axis, angle, is_inv = rotation_to_axis_angle(rotation, real_lattice)
-
+    print(axis, angle, is_inv)
     L_rot = get_all_L_rotation_matrix(axis, angle, is_inv)
     s_rot = rotate_spinor(axis, angle) if is_soc else np.eye(2, dtype=np.complex128)
 
     u_matrices_arr = np.zeros((nsites, max_orbs, max_orbs), dtype=np.complex128)
     for i in prange(nsites):
-        idx_src = group_indices[i, :group_lens[i]]
+        idx_src = site_indices[i, :site_lens[i]]
         tgt_idx = site_map[i, 0]
-        idx_tgt = group_indices[tgt_idx, :group_lens[i]]
+        idx_tgt = site_indices[tgt_idx, :site_lens[i]]
         # print('%d, idx_src[%d]: %s, idx_tgt[%d]: %s' % (i, i, str(idx_src), tgt_idx, str(idx_tgt)))
         if tgt_idx < 0:
             continue
-        if not is_local_axis:
-            u_site = _u_matrix_one_site(idx_src, idx_tgt, orb_lmsr, L_rot, s_rot, is_soc)
-        else:
+        if is_local_axis:
             u_site = _u_matrix_one_site_laxis(idx_src, idx_tgt, orb_lmsr, orb_laxis, rot_cart, is_soc)
+        else:
+            u_site = _u_matrix_one_site(idx_src, idx_tgt, orb_lmsr, L_rot, s_rot, is_soc)
         if u_site is not None:
             r, c = u_site.shape
             u_matrices_arr[i, :r, :c] = u_site
@@ -343,10 +347,8 @@ def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
 
         idx_a = orb_site_indices[a, :orb_site_lens[a]]
         idx_a_tgt = orb_site_indices[a_tgt, :orb_site_lens[a_tgt]]
+        n_a = len(idx_a)  # = len(idx_a_tgt)
         U_a = np.ascontiguousarray(u_matrices[a, :orb_site_lens[a_tgt], :orb_site_lens[a]])
-        # print(U_a.shape)
-        # oo_
-        # block always square shape
 
         for b in range(nsites):
             b_tgt = site_map[b, 0]
@@ -355,11 +357,10 @@ def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
 
             idx_b = orb_site_indices[b, :orb_site_lens[b]]
             idx_b_tgt = orb_site_indices[b_tgt, :orb_site_lens[b_tgt]]
+            n_b = len(idx_b)  # = len(idx_b_tgt)
             U_b_H = np.ascontiguousarray(np.conj(u_matrices[b, :orb_site_lens[b_tgt], :orb_site_lens[b]].T))
-            # if U_a.shape != U_b_H.shape: print(U_a.shape, U_b_H.shape)
             shift = (v_b - v_a).astype(np.float64)
-            # print(shift)
-            oo_block = np.zeros((len(idx_a), len(idx_b)), dtype=np.complex128)
+            oo_block = np.zeros((n_a, n_b), dtype=np.complex128)
             for ir in range(nrpt_in):
                 # R_eff = S @ R + v_b - v_a
                 rv_src = R_vec[ir].astype(np.float64)
@@ -368,12 +369,12 @@ def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                 # Binary search for R index
                 ir_tgt = find_R_vec(rv_eff, R_vec_pool)
                 # print(ir, ir_tgt)
-                if ir_tgt < 0: continue
+                if ir_tgt < 0: continue #should not happen
 
                 # Extract block H_ab
-                for i_a in range(len(idx_a)):
-                    for i_b in range(len(idx_b)):
-                        oo_block[i_a, i_b] = oo_R[ir, idx_a[i_a], idx_b[i_b]]
+                for i_loc in range(n_a):
+                    for j_loc in range(n_b):
+                        oo_block[i_loc, j_loc] = oo_R[ir, idx_a[i_loc], idx_b[j_loc]]
                 # oo_block = oo_R[ir, idx_a, idx_b]
 
                 # Handle Magnetic Symmetry
@@ -387,11 +388,11 @@ def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
 
                 # Accumulate
                 # Atomic add is not directly available in prange for complex
-                # But since each (a, b, ir) contributes to a unique (a_tgt, b_tgt, ir_tgt)
+                # But since each (ir, a, b) contributes to a unique (a_tgt, b_tgt, ir_tgt)
                 # for a FIXED symmetry operation, we don't have race conditions here.
-                for i_a in range(len(idx_a_tgt)):
-                    for i_b in range(len(idx_b_tgt)):
-                        oo_out[ir_tgt, idx_a_tgt[i_a], idx_b_tgt[i_b]] = oo_rot[i_a, i_b]
+                for i_loc in range(n_a):
+                    for j_loc in range(n_b):
+                        oo_out[ir_tgt, idx_a_tgt[i_loc], idx_b_tgt[j_loc]] = oo_rot[i_loc, j_loc]
     return oo_out
 
 @njit(parallel=True, cache=True, nogil=True)
@@ -407,14 +408,6 @@ def _rotate3_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
     # Initialize output Hamiltonian
     oo_out = np.zeros((n_Rpts_pool, 3, num_wann, num_wann), dtype=np.complex128)
 
-    # Pre-calculate R_rotated = R * S^T
-    # This is done inside site loops but can be optimized
-
-    # Parallelize over sites to avoid competition on oo_out for single operation
-    # Since rotation is a bijection of sites, a_tgt is unique for each a.
-    # However, different (a, b) pairs might map to the same (a_tgt, b_tgt)
-    # if the symmetry operation has a translation. But they will map to different R.
-    # So we should be safe with prange if we are careful.
 
     for a in prange(nsites):
         a_tgt = site_map[a, 0]
@@ -423,6 +416,7 @@ def _rotate3_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
 
         idx_a = orb_site_indices[a, :orb_site_lens[a]]
         idx_a_tgt = orb_site_indices[a_tgt, :orb_site_lens[a_tgt]]
+        n_a = len(idx_a) # = len(idx_a_tgt)
         U_a = np.ascontiguousarray(u_matrices[a, :orb_site_lens[a_tgt], :orb_site_lens[a]])
 
         for b in range(nsites):
@@ -432,6 +426,7 @@ def _rotate3_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
 
             idx_b = orb_site_indices[b, :orb_site_lens[b]]
             idx_b_tgt = orb_site_indices[b_tgt, :orb_site_lens[b_tgt]]
+            n_b = len(idx_b) # = len(idx_b_tgt)
             U_b_H = np.ascontiguousarray(np.conj(u_matrices[b, :orb_site_lens[b_tgt], :orb_site_lens[b]].T))
 
             shift = v_b - v_a
@@ -446,19 +441,20 @@ def _rotate3_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                 if ir_tgt < 0: continue
 
                 for i in range(3):
-                    oo_block = np.zeros((len(idx_a), len(idx_b)), dtype=np.complex128)
-                    # Numba does not support slice more than 2-D
-                    for i_a in range(len(idx_a)):
-                        for i_b in range(len(idx_b)):
+                    oo_block = np.zeros((n_a, n_b), dtype=np.complex128)
+
+                    for i_a in range(n_a):
+                        for i_b in range(n_b):
                             oo_block[i_a, i_b] = oo_R[ir, i, idx_a[i_a], idx_b[i_b]]
-                            # oo_block = np.ascontiguousarray(oo_R[ir, i, idx_a, idx_b])
+
                     if is_soc_tr:
                         oo_block = _apply_soc_tr(oo_block, idx_a, idx_b, spin_flip_map)
                     elif is_tr_only:
                         oo_block = np.conj(oo_block)
                     oo_rot = U_a @ np.ascontiguousarray(oo_block) @ U_b_H
-                    for i_a in range(len(idx_a_tgt)):
-                        for i_b in range(len(idx_b_tgt)):
+
+                    for i_a in range(n_a):
+                        for i_b in range(n_b):
                             oo_out[ir_tgt, i, idx_a_tgt[i_a], idx_b_tgt[i_b]] += oo_rot[i_a, i_b]
     return oo_out
 
@@ -501,6 +497,7 @@ def _apply_soc_tr(h_block: NDArray, idx_a: NDArray, idx_b: NDArray, spin_flip_ma
     # H_TR = K H* K^dagger
     # K = [[0, -1], [1, 0]] per spin block
     h_tr = np.conj(h_block)
+    # h_tr = h_block
     h_out = np.zeros_like(h_tr)
 
     n_a = idx_a.shape[0]
@@ -508,8 +505,7 @@ def _apply_soc_tr(h_block: NDArray, idx_a: NDArray, idx_b: NDArray, spin_flip_ma
 
     for i_loc in range(n_a):
         i_glob = idx_a[i_loc]
-        i_flip_glob = spin_flip_map[i_glob, 0]
-        sign_i = spin_flip_map[i_glob, 1]
+        i_flip_glob, sign_i = spin_flip_map[i_glob, 0], spin_flip_map[i_glob, 1]
 
         # Find local index of i_flip_glob in idx_a
         i_flip_local = -1
@@ -522,8 +518,7 @@ def _apply_soc_tr(h_block: NDArray, idx_a: NDArray, idx_b: NDArray, spin_flip_ma
 
         for j_loc in range(n_b):
             j_glob = idx_b[j_loc]
-            j_flip_glob = spin_flip_map[j_glob, 0]
-            sign_j = spin_flip_map[j_glob, 1]
+            j_flip_glob, sign_j = spin_flip_map[j_glob, 0], spin_flip_map[j_glob, 1]
 
             j_flip_local = -1
             for k in range(n_b):
@@ -562,33 +557,33 @@ def _u_matrix_one_site(indices_src, indices_tgt, orb_lmsr, L_rot, s_rot, is_soc)
     n_tgt = indices_tgt.shape[0]
     U = np.zeros((n_tgt, n_src), dtype=np.complex128)
 
-    # src_map = {(orb_lmsr[i, 0],orb_lmsr[i, 1], orb_lmsr[i, 2]): i_local
-    #            for i_local, i in enumerate(indices_src)}
-    # tgt_map = {(orb_lmsr[i, 0],orb_lmsr[i, 1], orb_lmsr[i, 2]): i_local
-    #            for i_local, i in enumerate(indices_tgt)}
-    for i_local in range(n_src):
-        i = indices_src[i_local]
+    # src_map = {(orb_lmsr[i, 0],orb_lmsr[i, 1], orb_lmsr[i, 2]): i_loc
+    #            for i_loc, i in enumerate(indices_src)}
+    # tgt_map = {(orb_lmsr[i, 0],orb_lmsr[i, 1], orb_lmsr[i, 2]): i_loc
+    #            for i_loc, i in enumerate(indices_tgt)}
+    for i_loc in range(n_src):
+        i = indices_src[i_loc]
         l, mr, ms = orb_lmsr[i, 0], orb_lmsr[i, 1], orb_lmsr[i, 2]
-        for j_local in range(n_tgt):
-            j = indices_tgt[j_local]
+        for j_loc in range(n_tgt):
+            j = indices_tgt[j_loc]
             if orb_lmsr[j, 0] != l: continue
             mr_prime, ms_prime = orb_lmsr[j, 1], orb_lmsr[j, 2]
             if is_soc:
-                U[j_local, i_local] = L_rot[l, mr_prime, mr] * s_rot[ms_prime, ms]
+                U[i_loc, j_loc] = L_rot[l, mr, mr_prime] * s_rot[ms, ms_prime]
             else:
-                U[j_local, i_local] = L_rot[l, mr_prime, mr]
+                U[i_loc, j_loc] = L_rot[l, mr, mr_prime]
 
         # for mr_prime in range(0, 2*l + 1):
         #     if is_soc:
         #         for ms_prime in [0, 1]:
         #
         #             if (l, mr_prime, ms_prime) in tgt_map:
-        #                 j_local = tgt_map[(l, mr_prime, ms_prime)]
-        #                 U[j_local, i_local] = D_l[l][mr_prime, mr] * s_rot[ms_prime, ms]
+        #                 j_loc = tgt_map[(l, mr_prime, ms_prime)]
+        #                 U[j_loc, i_loc] = D_l[l][mr_prime, mr] * s_rot[ms_prime, ms]
         #     else:
         #         if (l, mr_prime, ms) in tgt_map:
-        #             j_local = tgt_map[(l, mr_prime, ms)]
-        #             U[j_local, i_local] = D_l[l][mr_prime, mr]
+        #             j_loc = tgt_map[(l, mr_prime, ms)]
+        #             U[j_loc, i_loc] = D_l[l][mr_prime, mr]
     return U
 
 
@@ -694,11 +689,11 @@ def spin_flip_mapping(orb_pos: NDArray, orb_lmsr: NDArray) -> NDArray:
     norb = orb_pos.shape[0]
     mapping = np.zeros((norb, 2), dtype=np.int_)
     for i in range(norb):
-        # Look for the spin partner (same site, l, mr, but different ms)
+        # Look for the spin partner (same site, l, mr, but opposite ms)
         found = False
         for j in range(norb):
             if (np.allclose(orb_pos[i], orb_pos[j]) and orb_lmsr[i, 0] == orb_lmsr[j, 0] and
-                orb_lmsr[i, 3] == orb_lmsr[j, 3] and orb_lmsr[i, 2] != orb_lmsr[j, 2]):
+                orb_lmsr[i, 1] == orb_lmsr[j, 1] and orb_lmsr[i, 2] != orb_lmsr[j, 2]):
                 # ms=0 (Up) -> sign -1 (from -1 in i*sigma_y)
                 # ms=1 (Down) -> sign 1 (from 1 in i*sigma_y)
                 sign = -1 if orb_lmsr[i, 2] == 0 else 1

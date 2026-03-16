@@ -486,7 +486,7 @@ class TBSystem:
         return output
 
 
-    def axion_calc_fermi(self, kmesh: tuple, ef_range: tuple, eta=1e-4, subwf=None):
+    def axion_calc_fermi(self, kmesh: tuple, ef_range: tuple, eta=1e-4, mode=0, subwf=None):
 
         start = datetime.now()
         print('---------- start axion_calc_fermi ----------')
@@ -498,8 +498,8 @@ class TBSystem:
         efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
 
-        theta = axion_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
-                                 self.num_wann, kpts, efs, eta, subwf=subwf)
+        theta = axion_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT, self.num_wann, kpts, efs, eta, mode,
+                            subwf=subwf)
         theta /= self.volume
         output = np.column_stack((efs, theta))
         print('time used: %24.2f <-- axion_calc_fermi' % (datetime.now() - start).total_seconds())

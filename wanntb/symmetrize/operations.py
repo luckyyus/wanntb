@@ -55,6 +55,8 @@ class SymmetryOperators:
                 f"WARNING: Symmetry operation rotation matrix is not compatible with integer lattice!\n"
 
     def print_symmetry(self):
+        start = datetime.now()
+        print('---------- start print_symmetry ----------')
         print(f'number of operators: {self.n_operators}')
         for idx in range(self.n_operators):
             print(f'No. {idx}')
@@ -62,7 +64,7 @@ class SymmetryOperators:
             print(np.array2string(self.rotations[idx], precision=0, suppress_small=True))
             print(f'Translation: {np.array2string(self.translations[idx], precision=6, suppress_small=True)}')
             print(f'Time_reversal: {self.time_reversals[idx]}')
-
+        print('time used: %24.2f <-- print_symmetry' % (datetime.now() - start).total_seconds())
 
     def __getitem__(self, idx):
         return self.rotations[idx], self.translations[idx], self.time_reversals[idx]
