@@ -161,6 +161,9 @@ class TBSystem:
         print(filename, ' is saved.')
         print('time used: %24.2f <-- output_npz' % (datetime.now() - start).total_seconds())
 
+    def get_ham_one_R(self, rv):
+        ir = ut.find_R_vec(rv, self.R_vec)
+        return self.ham_R[ir]
 # the four functions below is usually for double check
 
     def r_cart_to_frac(self, r_cart):
@@ -394,7 +397,7 @@ class TBSystem:
 
     def berry_calc_fermi(self, tasks: str,
                          kmesh: tuple[int, int, int],
-                         ef_range: tuple[float, float,int],
+                         ef_range: tuple[float, float, int],
                          eta=1e-4, xyz=2, subwf=None):
         start = datetime.now()
         print('---------- start berry_calc_fermi ----------')
@@ -420,7 +423,7 @@ class TBSystem:
         print('time used: %24.2f <-- berry_calc_fermi' % (datetime.now() - start).total_seconds())
         return output
 
-    def berry_calc_kpath(self, tasks: str, ef, kpath, nkpts_path=100, eta=1e-4, xyz=2, subwf=None):
+    def berry_calc_kpath(self, tasks: str, ef: float, kpath, nkpts_path=100, eta=1e-4, xyz=2, subwf=None):
         start = datetime.now()
         print('---------- start berry_calc_kpath ----------')
         itasks, begin_idx, count = ut.get_itasks(tasks)
@@ -464,7 +467,8 @@ class TBSystem:
         print('time used: %24.2f <-- berry_calc_fermi' % (datetime.now() - start).total_seconds())
         return output
 
-    def berry_calc_intra_shc_fermi(self, kmesh: tuple, ef_range: tuple, eta=1e-3, xyz=2, subwf=None):
+    def berry_calc_intra_shc_fermi(self, kmesh: tuple[int, int, int], ef_range: tuple[float, float, int],
+                                   eta=1e-3, xyz=2, subwf=None):
         start = datetime.now()
         print('---------- start berry_calc_intra_shc_fermi----------')
 
@@ -486,7 +490,8 @@ class TBSystem:
         return output
 
 
-    def axion_calc_fermi(self, kmesh: tuple, ef_range: tuple, eta=1e-4, mode=0, subwf=None):
+    def axion_calc_fermi(self, kmesh: tuple[int, int, int], ef_range: tuple[float, float, int],
+                         eta=1e-4, mode=0, subwf=None):
 
         start = datetime.now()
         print('---------- start axion_calc_fermi ----------')

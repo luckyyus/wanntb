@@ -7,7 +7,7 @@ kpath = np.array([[0.00, 0.00, -0.50], [0.00, 0.00, 0.50]])
 
 # MBT-sl2
 # path = 'MBT-sl2-soc-af001'
-path = 'MBT-sl2-soc-af001-no-spin'
+# path = 'MBT-sl2-soc-af001-no-spin'
 # ef = 1.442
 # MBT-sl3
 # path = 'MBT-sl3-soc-af001'
@@ -24,22 +24,33 @@ path = 'MBT-sl2-soc-af001-no-spin'
 # path = 'MnSe-soc-af100'
 # ef = -2.2955
 
+# GaAs fcc
+path = 'GaAs-soc-001'
+
 # tbfile = os.path.join('..', 'tbdata', path, 'wannier90_tb.dat')
-npzfile = os.path.join('..', 'tbdata', path + '-tb.npz')
+npzfile = os.path.join('tbdata', path + '-tb.npz')
 # tb = wanntb.TBSystem(tb_file=tbfile)
-tb = wanntb.TBSystem(npz_file=npzfile)
+tb = wanntb.get_tbsystem_by_npz_file(npz_file=npzfile)
 
 # MBT
-ks = 192
-kmesh = (ks, ks, 1)
+# ks = 192
+# kmesh = (ks, ks, 1)
 #sl2
 # ef_range = (1.300, 2.600, 300)
 #sl3
-ef_range = (2.100, 2.400, 300)
+
+#GaAs
+ks = 64
+kmesh = (ks, ks, ks)
+ef_range = (2.500, 3.500, 1000)
+mode = 0
+output = tb.axion_calc_fermi(kmesh, ef_range, eta=1e-3, mode=mode)
+np.savetxt(path + '-axion-k%d-m%d.txt' % (ks, mode), output, fmt='%16.6f')
+# ef_range = (2.100, 2.400, 300)
 # subwf0 = np.r_[0:5]
 # subwf = np.append(subwf0, subwf0+69)
-output = tb.berry_calc_fermi('ahc', kmesh, ef_range, eta=1e-3, xyz=2, subwf=None)
-np.savetxt(path + '-berry-k%d-no-spin.txt' % ks, output, fmt='%16.6f')
+# output = tb.berry_calc_fermi('ahc', kmesh, ef_range, eta=1e-3, xyz=2, subwf=None)
+# np.savetxt(path + '-berry-k%d-no-spin.txt' % ks, output, fmt='%16.6f')
 
 # output = tb.get_ahc_kmesh_fermi((kmesh,kmesh,1), ef_range, eta=1e-3)
 # np.savetxt(path + '-ahc-k%d.txt' % kmesh, output, fmt='%16.6f')

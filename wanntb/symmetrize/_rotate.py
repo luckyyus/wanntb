@@ -30,9 +30,8 @@ def L_matrix(l: int) -> NDArray:
         idx = m + l  # 索引从0开始
         Lz[idx, idx] = m
         if m < l:
-            Lp[idx, idx+1] = np.sqrt((l - m) * (l + m + 1))  # L+|lm>
-        if m > -l:
-            Lm[idx, idx-1] = np.sqrt((l + m) * (l - m + 1))  # L-|lm>
+            Lp[idx+1, idx] = np.sqrt((l - m) * (l + m + 1))  # L+|lm>
+            Lm[idx, idx+1] = Lp[idx+1, idx]  # L-|lm>
     
     # Lx = (L+ + L-)/2, Ly = (L+ - L-)/(2j)
     Lmat[0] = (Lp + Lm) / 2
@@ -125,12 +124,12 @@ def Y2R_R2Y(l: int) -> Tuple[NDArray, NDArray]:
         Y2R = np.eye(dim, dtype=np.complex128)
     
     # 计算逆矩阵：Y2C = C2Y^{-1}
-    R2Y = np.conj(Y2R.T) # np.linalg.inv(Y2R)
+    R2Y = np.linalg.inv(Y2R)
     
     return Y2R, R2Y
 
 @njit(nogil=True)
-def rotate_Ylm(l: int, axis: NDArray, alpha: float, inversion=False) -> NDArray:
+def rotate_Ylm(l: int, axis: NDArray|tuple[float, float, float], alpha: float, inversion=False) -> NDArray:
     """
     生成球谐函数基下的旋转矩阵。
     参数:
@@ -161,7 +160,7 @@ def rotate_Ylm(l: int, axis: NDArray, alpha: float, inversion=False) -> NDArray:
     return rot_r
 
 @njit(nogil=True)
-def rotate_real_Ylm(l: int, axis: NDArray, alpha: float, inversion=False) -> NDArray:
+def rotate_real_Ylm(l: int, axis: NDArray|tuple[float, float, float], alpha: float, inversion=False) -> NDArray:
         """
         生成实球谐函数基下的旋转矩阵。
         参数:
@@ -173,8 +172,8 @@ def rotate_real_Ylm(l: int, axis: NDArray, alpha: float, inversion=False) -> NDA
             (2l+1)x(2l+1)旋转矩阵。
         """
         y2r, r2y = Y2R_R2Y(l)
-        rot_Ylm = rotate_Ylm(l, axis, alpha, inversion)
-        rot_r = r2y @ rot_Ylm @ y2r
+        rot_y = rotate_Ylm(l, axis, alpha, inversion)
+        rot_r = y2r @ rot_y @ r2y  # 是对的！
         return rot_r
 
 @njit(nogil=True)

@@ -487,16 +487,16 @@ def axion_fermi(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpts, efs, eta, mode, 
                 results_ef[i, ik] = theta_k
             elif mode == 2:
                 og = _get_f_omega(Ah_bk, Ah_bk, f, num_wann)
-                theta_k = np.diag(Ah_ak[2]).real * og[2]
+                theta_k = np.sum(np.diag(Ah_ak[2]).real * og[2])
                 results_ef[i, ik] = theta_k
             elif mode == 3:
                 og = _get_f_omega(Ah_ak, Ah_bk, f, num_wann)
-                theta_k = np.diag(Ah_bk[2]).real * og[2]
+                theta_k = np.sum(np.diag(Ah_bk[2]).real * og[2])
                 results_ef[i, ik] = theta_k
             else:
                 og_mat = _get_omega_gmat(Ah_bk, Ah_bk, f, num_wann)
-                theta_k = np.diag(og_mat[2]).real * f
+                theta_k = np.sum(np.diag(og_mat[2]).real * f)
                 results_ef[i, ik] = theta_k
 
-    # 归一化：结果实部除以 (-4 * pi * nkpts) 结果为 以 2pi为单位值
-    return np.sum(results_ef, axis=1) * TwoPi / (-2.0 * nkpts)
+    # 归一化：结果实部除以 (2pi * nkpts) 结果为 以 2pi为单位值
+    return np.sum(results_ef, axis=1) / (TwoPi * nkpts)

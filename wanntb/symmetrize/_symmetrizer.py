@@ -94,7 +94,7 @@ class Symmetrizer:
             self.R_vec_pool = self._system.R_vec.copy()
         self.n_Rpts_pool = self.R_vec_pool.shape[0]
 
-    def symmetrize(self, flag_tasks: NDArray[np.bool_],
+    def symmetrize(self, flag_tasks: tuple[bool, bool, bool],
                    disable_list: List[int] | None = None,
                    enable_list: List[int] | None = None,
                    is_expand: bool = False,
@@ -225,6 +225,9 @@ class Symmetrizer:
         for isym in range(len(self._operations)):
             # print('operator %d: ' % isym)
             rotation, translation, time_reversal = self._operations[isym]
+
+            axis, angle, is_inv = rotation_to_axis_angle(rotation, self._system.real_lattice)
+
             args = [self._system.real_lattice,
                     self.orb_site_indices,
                     self.orb_site_lens, self.site_maps[isym],
@@ -234,9 +237,12 @@ class Symmetrizer:
                     self.is_soc, self._system.orb_is_laxis]
             u_matrices_arr = _u_matrices_site_par(*args)
 
+            print('%4d [%10.6f %10.6f %10.6f] %10.6f'
+                  % (isym, axis[0], axis[1], axis[2], angle/np.pi), is_inv, time_reversal)
+
             self.u_matrices_list.append(u_matrices_arr)
         # print(self.u_matrices_list[2][0])
-        np.savetxt('u_2.txt', self.u_matrices_list[2][0], fmt='%8.4f')
+        np.savetxt('u_12.txt', self.u_matrices_list[12][0], fmt='%8.4f')
 
 @njit(parallel=True, cache=True, nogil=True)
 def _check_tolerance_R_par(oo_orig, oo_symm, R_vec_pool, n_rpts):
@@ -285,7 +291,7 @@ def _global_tr_symmetry_R_par(oo, num_wann, R_vec, n_rpts, spin_flip_map, is_soc
     return _oo
 
 
-# @njit(parallel=True, cache=True, nogil=True)
+@njit(parallel=True, cache=True, nogil=True)
 def _u_matrices_site_par(real_lattice: NDArray,
                          site_indices: NDArray, site_lens: NDArray, site_map: NDArray,
                          nsites: int, max_orbs: int,
@@ -295,7 +301,7 @@ def _u_matrices_site_par(real_lattice: NDArray,
     if is_local_axis:
         rot_cart = rotation_in_cart(rotation, real_lattice)
     axis, angle, is_inv = rotation_to_axis_angle(rotation, real_lattice)
-    print(axis, angle, is_inv)
+    # print(axis, angle, is_inv)
     L_rot = get_all_L_rotation_matrix(axis, angle, is_inv)
     s_rot = rotate_spinor(axis, angle) if is_soc else np.eye(2, dtype=np.complex128)
 
@@ -344,21 +350,21 @@ def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
         a_tgt = site_map[a, 0]
         if a_tgt < 0: continue
         v_a = site_map[a, 1:]
+        n_a = orb_site_lens[a]  # = orb_site_lens[a_tgt]
+        idx_a = orb_site_indices[a, :n_a]
+        idx_a_tgt = orb_site_indices[a_tgt, :n_a]
 
-        idx_a = orb_site_indices[a, :orb_site_lens[a]]
-        idx_a_tgt = orb_site_indices[a_tgt, :orb_site_lens[a_tgt]]
-        n_a = len(idx_a)  # = len(idx_a_tgt)
-        U_a = np.ascontiguousarray(u_matrices[a, :orb_site_lens[a_tgt], :orb_site_lens[a]])
+        U_a = np.ascontiguousarray(u_matrices[a, :n_a, :n_a])
 
         for b in range(nsites):
             b_tgt = site_map[b, 0]
             if b_tgt < 0: continue
             v_b = site_map[b, 1:]
+            n_b = orb_site_lens[b]  # = orb_site_lens[b_tgt]
+            idx_b = orb_site_indices[b, :n_b]
+            idx_b_tgt = orb_site_indices[b_tgt, :n_b]
 
-            idx_b = orb_site_indices[b, :orb_site_lens[b]]
-            idx_b_tgt = orb_site_indices[b_tgt, :orb_site_lens[b_tgt]]
-            n_b = len(idx_b)  # = len(idx_b_tgt)
-            U_b_H = np.ascontiguousarray(np.conj(u_matrices[b, :orb_site_lens[b_tgt], :orb_site_lens[b]].T))
+            U_b_H = np.ascontiguousarray(np.conj(u_matrices[b, :n_b, :n_b].T))
             shift = (v_b - v_a).astype(np.float64)
             oo_block = np.zeros((n_a, n_b), dtype=np.complex128)
             for ir in range(nrpt_in):
@@ -569,9 +575,9 @@ def _u_matrix_one_site(indices_src, indices_tgt, orb_lmsr, L_rot, s_rot, is_soc)
             if orb_lmsr[j, 0] != l: continue
             mr_prime, ms_prime = orb_lmsr[j, 1], orb_lmsr[j, 2]
             if is_soc:
-                U[i_loc, j_loc] = L_rot[l, mr, mr_prime] * s_rot[ms, ms_prime]
+                U[j_loc, i_loc] = L_rot[l, mr_prime, mr] * s_rot[ms_prime, ms]
             else:
-                U[i_loc, j_loc] = L_rot[l, mr, mr_prime]
+                U[j_loc, i_loc] = L_rot[l, mr_prime, mr]
 
         # for mr_prime in range(0, 2*l + 1):
         #     if is_soc:
