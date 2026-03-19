@@ -4,8 +4,8 @@ import yaml
 import wanntb
 
 
-path = 'MBT-sl3-soc-af001'
-# path = 'GaAs-soc-001'
+# path = 'MBT-sl3-soc-af001'
+path = 'GaAs-soc-001'
 
 tbfile = os.path.join('tbdata', path, 'wannier90_tb.dat')
 ssfile = os.path.join('tbdata', path, 'wannier90_SS_R.dat')

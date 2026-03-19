@@ -113,25 +113,33 @@ class Symmetrizer:
         n_orbs = self._system.num_wann
         if self.site_maps is None:
             self._update_site_mapping()
-        # print('R_rec:')
-        # print(self._system.R_vec)
         self._update_R_vec_pool(is_expand)
-        # print('R_vec_pool:')
-        # print(self.R_vec_pool)
+        print('R_vec_pool:', self.R_vec_pool.dtype, self.R_vec_pool.shape)
         print('time used: %24.2f <-- update R_vec_pool' % (datetime.now() - start).total_seconds())
-        self._update_u_matrices()
 
+        self._update_u_matrices()
         print('time used: %24.2f <-- update u_matrices' % (datetime.now() - start).total_seconds())
-        if flag_tasks[2] and self._system.ss_R is None:
-            print('ss_R data is missing but symmetrizing spin matrices is required.')
-            return None
+
+        args_expand = [self._system.R_vec, n_orbs, self.R_vec_pool, self.n_Rpts_pool]
+        args_expand0 = [self._system.ham_R] + args_expand
+        args_expand1 = [self._system.r_mat_R] + args_expand
+        args_expand2 = [self._system.ss_R] + args_expand
+
+        ham_orig = _get_oo_with_expand_R_vec(*args_expand0) if is_expand else self._system.ham_R
+        r_mat_orig = _get_oo3_with_expand_R_vec(*args_expand1) if is_expand else self._system.r_mat_R
+        ss_orig = None
+        if self._system.ss_R is not None:
+            ss_orig = _get_oo3_with_expand_R_vec(*args_expand2) if is_expand else self._system.ss_R
 
         if flag_tasks[0]:
             hams = np.zeros((n_enabled, self.n_Rpts_pool, n_orbs, n_orbs), dtype=np.complex128)
         if flag_tasks[1]:
             r_mats = np.zeros((n_enabled, self.n_Rpts_pool, 3, n_orbs, n_orbs), dtype=np.complex128)
         if flag_tasks[2]:
+            assert self._system.ss_R is not None, 'ss_R data is missing but symmetrizing spin matrices is required.'
             s_mats = np.zeros((n_enabled, self.n_Rpts_pool, 3, n_orbs, n_orbs), dtype=np.complex128)
+
+
         idx_enable = 0
         for isym in range(len(self._operations)):
             if not self._operations.is_enabled[isym]: continue
@@ -144,41 +152,34 @@ class Symmetrizer:
             print('is_soc_tr: %s' % str(is_soc_tr))
             is_tr_only = (not self.is_soc and time_reversal == 1)
             print('is_tr_only: %s' % str(is_tr_only))
-            args = [self._system.R_vec, self._system.num_wann,
+            args = [self._system.num_wann,
                     self.R_vec_pool, self.n_Rpts_pool,
                     rotation, site_map, u_matrices,
                     self.orb_site_indices, self.orb_site_lens,
                     self.spin_flip_map,
                     is_soc_tr, is_tr_only]
             if flag_tasks[0]:
-                args0 = [self._system.ham_R] + args
+                args0 = [ham_orig] + args
                 hams[idx_enable] = _rotate_site_par(*args0)
                 print('time used: %24.2f <-- rotate Hamiltonian for symmetric operator No. %d finished' %
                       ((datetime.now() - start).total_seconds(), isym))
             if flag_tasks[1]:
-                args1 = [self._system.r_mat_R] + args
+                args1 = [r_mat_orig] + args
                 r_mats[idx_enable] = _rotate3_site_par(*args1)
                 print('time used: %24.2f <-- rotate r_matrices for symmetric operator No. %d finished' %
                       ((datetime.now() - start).total_seconds(), isym))
             if flag_tasks[2]:
-                args2 = [self._system.ss_R] + args
+                args2 = [ss_orig] + args
                 s_mats[idx_enable] = _rotate3_site_par(*args2)
                 print('time used: %24.2f <-- rotate spin matrices for symmetric operator No. %d finished' %
                       ((datetime.now() - start).total_seconds(), isym))
             idx_enable += 1
 
-        # Average
-        ham_out = np.sum(hams, axis=0) / n_enabled if flag_tasks[0] else None
-        r_mat_out = np.sum(r_mats, axis=0) / n_enabled if flag_tasks[1] else None
-        ss_out = np.sum(s_mats, axis=0) / n_enabled if flag_tasks[2] else None
-
-        args_expand = [self._system.R_vec, n_orbs, self.R_vec_pool, self.n_Rpts_pool]
-        args_expand0 = [self._system.ham_R] + args_expand
-        args_expand1 = [self._system.r_mat_R] + args_expand
-        args_expand2 = [self._system.ss_R] + args_expand
         if flag_tasks[0]:
+            # Average
+            ham_out = np.sum(hams, axis=0) / n_enabled
+
             # tolerance check
-            ham_orig = _get_oo_with_expand_R_vec(*args_expand0) if is_expand else self._system.ham_R
             max_diff, max_rv = _check_tolerance_R_par(ham_orig, ham_out, self.R_vec_pool, self.n_Rpts_pool)
             if max_diff > tol:
                 print(f"WARNING: Symmetrization difference ({max_diff:.6f}) for ham_R "
@@ -191,11 +192,13 @@ class Symmetrizer:
             # hermitian
             ham_out = hermiization_R(ham_out, self.R_vec_pool)
         else:
-            ham_out = _get_oo_with_expand_R_vec(*args_expand0) if is_expand else self._system.ham_R
+            ham_out = ham_orig
 
         if flag_tasks[1]:
+            # Average
+            r_mat_out = np.sum(r_mats, axis=0) / n_enabled
+
             # tolerance check
-            r_mat_orig = _get_oo3_with_expand_R_vec(*args_expand1) if is_expand else self._system.r_mat_R
             max_diff, max_rv = _check_tolerance_R_par(r_mat_orig, r_mat_out, self.R_vec_pool, self.n_Rpts_pool)
             if max_diff > tol:
                 print(f"WARNING: Symmetrization difference ({max_diff:.6f}) for r_mat_R "
@@ -203,11 +206,13 @@ class Symmetrizer:
             # hermitian
             r_mat_out = hermiization_R(r_mat_out, self.R_vec_pool)
         else:
-            r_mat_out = _get_oo3_with_expand_R_vec(*args_expand1) if is_expand else self._system.r_mat_R
+            r_mat_out = r_mat_orig
 
         if flag_tasks[2]:
+            # Average
+            ss_out = np.sum(s_mats, axis=0) / n_enabled
+
             # tolerance check
-            ss_orig = _get_oo3_with_expand_R_vec(*args_expand2) if is_expand else self._system.ss_R
             max_diff, max_rv = _check_tolerance_R_par(ss_orig, ss_out, self.R_vec_pool, self.n_Rpts_pool)
             if max_diff > tol:
                 print(f"WARNING: Symmetrization difference ({max_diff:.6f}) for ss_R "
@@ -215,8 +220,8 @@ class Symmetrizer:
             # hermitian
             ss_out = hermiization_R(ss_out, self.R_vec_pool)
         else:
-            if self._system.ss_R is not None:
-                ss_out = _get_oo3_with_expand_R_vec(*args_expand2) if is_expand else self._system.ss_R
+            ss_out = ss_orig
+
         print('time used: %24.2f <-- symmetrize' % (datetime.now() - start).total_seconds())
         return ham_out, r_mat_out, ss_out, self.R_vec_pool
 
@@ -324,14 +329,13 @@ def _u_matrices_site_par(real_lattice: NDArray,
 
 
 @njit(parallel=True, cache=True, nogil=True)
-def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
+def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                      rotation, site_map, u_matrices, orb_site_indices, orb_site_lens, spin_flip_map,
                      is_soc_tr, is_tr_only):
     """
     Numba optimized rotation kernel.
     """
 
-    nrpt_in = R_vec.shape[0]
     nsites = site_map.shape[0]
 
     # Initialize output Hamiltonian
@@ -367,9 +371,10 @@ def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
             U_b_H = np.ascontiguousarray(np.conj(u_matrices[b, :n_b, :n_b].T))
             shift = (v_b - v_a).astype(np.float64)
             oo_block = np.zeros((n_a, n_b), dtype=np.complex128)
-            for ir in range(nrpt_in):
+            oo_orig = np.zeros((n_a, n_b), dtype=np.complex128)
+            for ir in range(n_Rpts_pool):
                 # R_eff = S @ R + v_b - v_a
-                rv_src = R_vec[ir].astype(np.float64)
+                rv_src = R_vec_pool[ir].astype(np.float64)
                 rv_eff = np.rint(rotation @ rv_src + shift)
                 # print(rv_src, rv_eff)
                 # Binary search for R index
@@ -378,10 +383,10 @@ def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                 if ir_tgt < 0: continue #should not happen
 
                 # Extract block H_ab
-                for i_loc in range(n_a):
-                    for j_loc in range(n_b):
-                        oo_block[i_loc, j_loc] = oo_R[ir, idx_a[i_loc], idx_b[j_loc]]
-                # oo_block = oo_R[ir, idx_a, idx_b]
+                for i_a in range(n_a):
+                    for j_b in range(n_b):
+                        oo_block[i_a, j_b] = oo_R[ir, idx_a[i_a], idx_b[j_b]]
+                        oo_orig[i_a, j_b] = oo_R[ir_tgt, idx_a_tgt[i_a], idx_b_tgt[j_b]]
 
                 # Handle Magnetic Symmetry
                 if is_soc_tr:
@@ -396,24 +401,26 @@ def _rotate_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                 # Atomic add is not directly available in prange for complex
                 # But since each (ir, a, b) contributes to a unique (a_tgt, b_tgt, ir_tgt)
                 # for a FIXED symmetry operation, we don't have race conditions here.
-                for i_loc in range(n_a):
-                    for j_loc in range(n_b):
-                        oo_out[ir_tgt, idx_a_tgt[i_loc], idx_b_tgt[j_loc]] = oo_rot[i_loc, j_loc]
+                for i_a in range(n_a):
+                    for j_b in range(n_b):
+                        _p = np.abs(oo_orig[i_a, j_b] - oo_rot[i_a, j_b])
+                        _n = np.abs(oo_orig[i_a, j_b] + oo_rot[i_a, j_b])
+                        oo_out[ir_tgt, idx_a_tgt[i_a], idx_b_tgt[j_b]] = (oo_rot[i_a, j_b]
+                                                                          if _p < _n or _n < DEFAULT_HAM_TOLERANCE
+                                                                         else -oo_rot[i_a, j_b])
     return oo_out
 
 @njit(parallel=True, cache=True, nogil=True)
-def _rotate3_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
+def _rotate3_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                      rotation, site_map, u_matrices, orb_site_indices, orb_site_lens, spin_flip_map,
                      is_soc_tr, is_tr_only):
     """
     Numba optimized rotation kernel.
     """
-    nrpt_in = R_vec.shape[0]
     nsites = site_map.shape[0]
 
     # Initialize output Hamiltonian
     oo_out = np.zeros((n_Rpts_pool, 3, num_wann, num_wann), dtype=np.complex128)
-
 
     for a in prange(nsites):
         a_tgt = site_map[a, 0]
@@ -437,9 +444,9 @@ def _rotate3_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
 
             shift = v_b - v_a
 
-            for ir in range(nrpt_in):
+            for ir in range(n_Rpts_pool):
                 # R_eff = S @ R + v_b - v_a
-                rv_src = R_vec[ir].astype(np.float64)
+                rv_src = R_vec_pool[ir].astype(np.float64)
                 rv_eff = np.rint(rotation @ rv_src + shift)
 
                 # Binary search for R index
@@ -448,10 +455,12 @@ def _rotate3_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
 
                 for i in range(3):
                     oo_block = np.zeros((n_a, n_b), dtype=np.complex128)
+                    # oo_orig = np.zeros((n_a, n_b), dtype=np.complex128)
 
                     for i_a in range(n_a):
-                        for i_b in range(n_b):
-                            oo_block[i_a, i_b] = oo_R[ir, i, idx_a[i_a], idx_b[i_b]]
+                        for j_b in range(n_b):
+                            oo_block[i_a, j_b] = oo_R[ir, i, idx_a[i_a], idx_b[j_b]]
+                            # oo_orig[i_a, j_b] = oo_R[ir_tgt, i, idx_a_tgt[i_a], idx_b_tgt[j_b]]
 
                     if is_soc_tr:
                         oo_block = _apply_soc_tr(oo_block, idx_a, idx_b, spin_flip_map)
@@ -460,8 +469,12 @@ def _rotate3_site_par(oo_R, R_vec, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                     oo_rot = U_a @ np.ascontiguousarray(oo_block) @ U_b_H
 
                     for i_a in range(n_a):
-                        for i_b in range(n_b):
-                            oo_out[ir_tgt, i, idx_a_tgt[i_a], idx_b_tgt[i_b]] += oo_rot[i_a, i_b]
+                        for j_b in range(n_b):
+                            # _p = np.abs(oo_orig[i_a, j_b] - oo_rot[i_a, j_b])
+                            # _n = np.abs(oo_orig[i_a, j_b] + oo_rot[i_a, j_b])
+                            oo_out[ir_tgt, i, idx_a_tgt[i_a], idx_b_tgt[j_b]] = oo_rot[i_a, j_b]
+                                                                                 # if _p < _n
+                                                                                # else -oo_rot[i_a, j_b])
     return oo_out
 
 

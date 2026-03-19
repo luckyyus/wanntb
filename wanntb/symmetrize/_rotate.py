@@ -29,7 +29,7 @@ def L_matrix(l: int) -> NDArray:
     for m in range(-l, l+1):
         idx = m + l  # 索引从0开始
         Lz[idx, idx] = m
-        if m < l:
+        if m < l: # 注意是升序排序！L+和L-写法不一样
             Lp[idx+1, idx] = np.sqrt((l - m) * (l + m + 1))  # L+|lm>
             Lm[idx, idx+1] = Lp[idx+1, idx]  # L-|lm>
     
@@ -41,7 +41,7 @@ def L_matrix(l: int) -> NDArray:
     return Lmat
 
 @njit(nogil=True)
-def Y2R_R2Y(l: int) -> Tuple[NDArray, NDArray]:
+def Y2R(l: int) -> NDArray[np.complex128]:
     """
     生成球谐函数(Ylm)和实球谐函数(Real Spherical Harmonics)之间的变换矩阵。
     
@@ -49,8 +49,7 @@ def Y2R_R2Y(l: int) -> Tuple[NDArray, NDArray]:
         l: 角动量量子数 (0=s, 1=p, 2=d, 3=f)
     
     返回:
-        R2Y: (shape: (2l+1) x (2l+1))
-        R2Y:  (shape: (2l+1) x (2l+1))
+        R2Y: (shape: [(2l+1) (mr) ,(2l+1) (m)])
     """
     dim = int(2 * l + 1)
     
@@ -124,9 +123,9 @@ def Y2R_R2Y(l: int) -> Tuple[NDArray, NDArray]:
         Y2R = np.eye(dim, dtype=np.complex128)
     
     # 计算逆矩阵：Y2C = C2Y^{-1}
-    R2Y = np.linalg.inv(Y2R)
+    # R2Y = np.linalg.inv(Y2R)
     
-    return Y2R, R2Y
+    return Y2R
 
 @njit(nogil=True)
 def rotate_Ylm(l: int, axis: NDArray|tuple[float, float, float], alpha: float, inversion=False) -> NDArray:
@@ -171,9 +170,11 @@ def rotate_real_Ylm(l: int, axis: NDArray|tuple[float, float, float], alpha: flo
         返回:
             (2l+1)x(2l+1)旋转矩阵。
         """
-        y2r, r2y = Y2R_R2Y(l)
+        y2r = Y2R(l)
+        y2r_conj = np.conj(y2r)
+        r2y_conj = np.linalg.inv(y2r_conj)
         rot_y = rotate_Ylm(l, axis, alpha, inversion)
-        rot_r = y2r @ rot_y @ r2y  # 是对的！
+        rot_r = y2r_conj @ rot_y @ r2y_conj  # 是对的！
         return rot_r
 
 @njit(nogil=True)
@@ -235,11 +236,12 @@ def rotate_spinor(axis: NDArray, alpha: float, inversion=False) -> NDArray:
     返回:
         2x2复数矩阵，表示旋转。
     """
-    norm = np.linalg.norm(axis)
-    if norm > 1e-10:
-        axis = axis / norm
-    else:
-        # Zero axis means no rotation
+    # norm = np.linalg.norm(axis)
+    # if norm > 1e-10:
+    #     axis = axis / norm
+    # else:
+    # Zero axis means no rotation
+    if np.linalg.norm(axis) < EPS6:
         return np.eye(2, dtype=np.complex128)
 
     # 旋转轴点乘Pauli矩阵

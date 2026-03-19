@@ -14,7 +14,8 @@ path = 'GaAs-soc-001'
 #                   [1.0/3.0, 1.0/3.0, 0.00],
 #                   [0.50, 0.00, 0.00]])
 
-kpath = np.array([[0.00, 0.00, 0.00],
+kpath = np.array([[0.50, 0.50, 0.50],
+                  [0.00, 0.00, 0.00],
                   [0.50, 0.50, 0.00],
                   [0.50, 0.50, 0.50],
                   [0.50, 0.25, 0.75]])
@@ -30,16 +31,18 @@ tb.output_bands_kpath(kpath, nkpts_path=100, filename=path + '-bands-orig.txt')
 symm = wanntb.symmetrize.Symmetrizer(tb, magmom_str='0 0', is_soc=True)
 
 ham_out, r_mat_out, ss_out, r_vec = symm.symmetrize((True, False, False),
-                                                    enable_list=[12],
-                                                     is_expand=True)
+                                                    # enable_list=[0, 1, 4, 5, 8, 9, 12, 13],
+                                                    # enable_list=[2,3],
+                                                    # enable_list=[16, 17],
+                                                    is_expand=True)
 tb_new = wanntb.get_tbsystem_by_new_ham(tb, ham_out, r_mat_out, r_vec, ss_R_new=ss_out)
 
 tb_new.output_bands_kpath(kpath, nkpts_path=100, filename=path + '-bands-symm.txt')
 
-rv = np.array((0, 0, -1), dtype=np.int16)
-orig = tb.get_ham_one_R(rv)[:8, :8]
-symm = tb_new.get_ham_one_R(rv)[:8, :8]
-np.savetxt('hr_orig_009.txt', orig, fmt='%8.4f')
-np.savetxt('hr_symm_009.txt', symm, fmt='%8.4f')
-
-np.savetxt('hr_diff_009.txt', symm - orig, fmt='%8.4f')
+# rv = np.array((0, 0, 0), dtype=np.int16)
+# orig = tb.get_ham_one_R(rv)[:8, :8]
+# symm = tb_new.get_ham_one_R(rv)[:8, :8]
+# np.savetxt('hr_orig_000.txt', orig, fmt='%8.4f')
+# np.savetxt('hr_symm_000.txt', symm, fmt='%8.4f')
+#
+# np.savetxt('hr_diff_000.txt', symm - orig, fmt='%8.4f')
