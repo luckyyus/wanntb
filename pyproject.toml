@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 [project]
 name = "wanntb"
-version = "2026.3.19"
+version = "2026.3.20"
 authors = [{name = 'Jie-Xiang Yu', email = 'kaelthas.yu@gmail.com'},
     {name = 'Sheng Pan'},
     {name = 'Jia-Lu Fu'},
