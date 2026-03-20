@@ -139,6 +139,8 @@ def rotate_Ylm(l: int, axis: NDArray|tuple[float, float, float], alpha: float, i
     返回:
         (2l+1)x(2l+1)旋转矩阵。
     """
+    if l == 0:  # s 轨道
+        return np.array([1.0], dtype=np.complex128)
     Lx, Ly, Lz = L_matrix(l)
     # 旋转生成器: n·L
     L_dot_n = axis[0] * Lx + axis[1] * Ly + axis[2] * Lz
@@ -255,8 +257,8 @@ def rotate_spinor(axis: NDArray, alpha: float, inversion=False) -> NDArray:
     exp_eig = np.diag(np.exp(-1j * eigenvalues))
     rot_spin = eigenvectors @ exp_eig @ np.conj(eigenvectors.T)
 
-    if inversion:
-        rot_spin *= -1j  # inv时乘以-i
+    # if inversion:
+    #     rot_spin *= -1j  # inv时乘以-i
     
     return rot_spin
 

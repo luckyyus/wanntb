@@ -1,6 +1,7 @@
 from typing import Tuple, List
 from datetime import datetime
 import numpy as np
+from numba.typed.listobject import ll_ssize_t
 from numpy.typing import NDArray
 from numba import njit, prange
 
@@ -38,14 +39,16 @@ class Symmetrizer:
             n_idx = len(idx_arr)
             self.orb_site_indices[i, :n_idx] = idx_arr
             self.orb_site_lens[i] = n_idx
-        # print('orb_site_indices: %s' % str(self.orb_site_indices))
+        print('orb_site_indices:')
+        print(self.orb_site_indices)
         print('orb_site_lens: %s' % str(self.orb_site_lens))
 
         self.R_vec_pool = None
         self.n_Rpts_pool = 0
         self.site_maps = None
         self.spin_flip_map = spin_flip_mapping(self._system.orb_pos, self._system.orb_lmsr)
-        # print(self.spin_flip_map)
+        print('spin_flip_map:')
+        print(self.spin_flip_map)
         self.is_expand = False
         self.u_matrices_list = []
 
@@ -94,14 +97,14 @@ class Symmetrizer:
             self.R_vec_pool = self._system.R_vec.copy()
         self.n_Rpts_pool = self.R_vec_pool.shape[0]
 
-    def symmetrize(self, flag_tasks: tuple[bool, bool, bool],
+    def symmetrize(self, tasks: str,
                    disable_list: List[int] | None = None,
                    enable_list: List[int] | None = None,
                    is_expand: bool = False,
                    is_global_tr: bool = False,
                    tol: float = DEFAULT_HAM_TOLERANCE):
         """Symmetrize Hamiltonian and/or other TB operators.
-            flag_tasks: list of bool: 0 - ham; 1 - r_mat; 2 - s_mat
+            tasks: string combining: 'h' - ham; 'r' or 'a' - r_mat; 's' - s_mat
         """
         start = datetime.now()
         print('---------- start symmetrize ----------')
@@ -109,6 +112,11 @@ class Symmetrizer:
         if enable_list is not None: self._operations.set_enabled(enable_list)
         n_enabled = self._operations.n_enabled()
         print('number of enabled operators: %d' % n_enabled)
+        _tasks = tasks.lower()
+        l_ham = True if 'h' in _tasks else False
+        l_rmat = True if ('a' in _tasks or 'r' in _tasks) else False
+        l_ss = True if 's' in _tasks else False
+
 
         n_orbs = self._system.num_wann
         if self.site_maps is None:
@@ -131,11 +139,11 @@ class Symmetrizer:
         if self._system.ss_R is not None:
             ss_orig = _get_oo3_with_expand_R_vec(*args_expand2) if is_expand else self._system.ss_R
 
-        if flag_tasks[0]:
+        if l_ham:
             hams = np.zeros((n_enabled, self.n_Rpts_pool, n_orbs, n_orbs), dtype=np.complex128)
-        if flag_tasks[1]:
+        if l_rmat:
             r_mats = np.zeros((n_enabled, self.n_Rpts_pool, 3, n_orbs, n_orbs), dtype=np.complex128)
-        if flag_tasks[2]:
+        if l_ss:
             assert self._system.ss_R is not None, 'ss_R data is missing but symmetrizing spin matrices is required.'
             s_mats = np.zeros((n_enabled, self.n_Rpts_pool, 3, n_orbs, n_orbs), dtype=np.complex128)
 
@@ -158,24 +166,24 @@ class Symmetrizer:
                     self.orb_site_indices, self.orb_site_lens,
                     self.spin_flip_map,
                     is_soc_tr, is_tr_only]
-            if flag_tasks[0]:
+            if l_ham:
                 args0 = [ham_orig] + args
                 hams[idx_enable] = _rotate_site_par(*args0)
                 print('time used: %24.2f <-- rotate Hamiltonian for symmetric operator No. %d finished' %
                       ((datetime.now() - start).total_seconds(), isym))
-            if flag_tasks[1]:
+            if l_rmat:
                 args1 = [r_mat_orig] + args
                 r_mats[idx_enable] = _rotate3_site_par(*args1)
                 print('time used: %24.2f <-- rotate r_matrices for symmetric operator No. %d finished' %
                       ((datetime.now() - start).total_seconds(), isym))
-            if flag_tasks[2]:
+            if l_ss:
                 args2 = [ss_orig] + args
                 s_mats[idx_enable] = _rotate3_site_par(*args2)
                 print('time used: %24.2f <-- rotate spin matrices for symmetric operator No. %d finished' %
                       ((datetime.now() - start).total_seconds(), isym))
             idx_enable += 1
 
-        if flag_tasks[0]:
+        if l_ham:
             # Average
             ham_out = np.sum(hams, axis=0) / n_enabled
 
@@ -194,7 +202,7 @@ class Symmetrizer:
         else:
             ham_out = ham_orig
 
-        if flag_tasks[1]:
+        if l_rmat:
             # Average
             r_mat_out = np.sum(r_mats, axis=0) / n_enabled
 
@@ -208,7 +216,7 @@ class Symmetrizer:
         else:
             r_mat_out = r_mat_orig
 
-        if flag_tasks[2]:
+        if l_ss:
             # Average
             ss_out = np.sum(s_mats, axis=0) / n_enabled
 
@@ -247,7 +255,7 @@ class Symmetrizer:
 
             self.u_matrices_list.append(u_matrices_arr)
         # print(self.u_matrices_list[2][0])
-        np.savetxt('u_12.txt', self.u_matrices_list[12][0], fmt='%8.4f')
+        # np.savetxt('u_12.txt', self.u_matrices_list[12][0], fmt='%8.4f')
 
 @njit(parallel=True, cache=True, nogil=True)
 def _check_tolerance_R_par(oo_orig, oo_symm, R_vec_pool, n_rpts):
@@ -333,7 +341,7 @@ def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                      rotation, site_map, u_matrices, orb_site_indices, orb_site_lens, spin_flip_map,
                      is_soc_tr, is_tr_only):
     """
-    Numba optimized rotation kernel.
+    rotation lattice space Hamiltonian.
     """
 
     nsites = site_map.shape[0]
@@ -405,9 +413,9 @@ def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                     for j_b in range(n_b):
                         _p = np.abs(oo_orig[i_a, j_b] - oo_rot[i_a, j_b])
                         _n = np.abs(oo_orig[i_a, j_b] + oo_rot[i_a, j_b])
-                        oo_out[ir_tgt, idx_a_tgt[i_a], idx_b_tgt[j_b]] = (oo_rot[i_a, j_b]
-                                                                          if _p < _n or _n < DEFAULT_HAM_TOLERANCE
-                                                                         else -oo_rot[i_a, j_b])
+                        oo_out[ir_tgt, idx_a_tgt[i_a], idx_b_tgt[j_b]] = oo_rot[i_a, j_b]
+                                                                          # if _p < _n or _n < DEFAULT_HAM_TOLERANCE
+                                                                         # else -oo_rot[i_a, j_b])
     return oo_out
 
 @njit(parallel=True, cache=True, nogil=True)
@@ -516,7 +524,6 @@ def _apply_soc_tr(h_block: NDArray, idx_a: NDArray, idx_b: NDArray, spin_flip_ma
     # H_TR = K H* K^dagger
     # K = [[0, -1], [1, 0]] per spin block
     h_tr = np.conj(h_block)
-    # h_tr = h_block
     h_out = np.zeros_like(h_tr)
 
     n_a = idx_a.shape[0]
