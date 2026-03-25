@@ -1,7 +1,6 @@
 from typing import Tuple, List
 from datetime import datetime
 import numpy as np
-from numba.typed.listobject import ll_ssize_t
 from numpy.typing import NDArray
 from numba import njit, prange
 
@@ -9,15 +8,14 @@ from .._system import TBSystem
 from ..constant import DEFAULT_POSITION_TOLERANCE, DEFAULT_HAM_TOLERANCE, DEFAULT_SYMM_TOLERANCE, EPS5
 from ..utility import find_R_vec, hermiization_R
 from .operations import get_symmetry, SymmetryOperators
-from ._rotate import (rotate_spinor,
-                      rotation_in_cart, rotation_to_axis_angle,
-                      get_all_L_rotation_matrix, combine_rotation_with_local_axis, rotate_real_Ylm)
+from ._rotate import (rotate_spinor, rotation_to_axis_angle, rotate_real_Ylm,
+                      rotation_in_cart, get_all_L_rotation_matrix, combine_rotation_with_local_axis)
 
 
 class Symmetrizer:
 
     def __init__(self, system: TBSystem, magmom_str: str|None = None,
-                 symprec: float = DEFAULT_SYMM_TOLERANCE, is_soc: bool = True):
+                 symprec: float = DEFAULT_SYMM_TOLERANCE, is_soc: bool = True, dim: int=3):
         self._system = system
         self._operations: SymmetryOperators = get_symmetry(self._system.real_lattice,
                                                            self._system.atom_pos, self._system.atom_spec,
@@ -25,7 +23,7 @@ class Symmetrizer:
                                                            tol=symprec)
         self._operations.print_symmetry()
         self.is_soc = is_soc
-
+        self.dim = dim
         # process orbital sites data (positions, indices and the length)
         self.orb_site_pos, _orb_site_indices = group_orbitals_by_site(self._system.orb_pos)
         print('orb_site_pos: %s %s' % (self.orb_site_pos.dtype, list(self.orb_site_pos.shape)))
@@ -47,8 +45,8 @@ class Symmetrizer:
         self.n_Rpts_pool = 0
         self.site_maps = None
         self.spin_flip_map = spin_flip_mapping(self._system.orb_pos, self._system.orb_lmsr)
-        print('spin_flip_map:')
-        print(self.spin_flip_map)
+        # print('spin_flip_map:')
+        # print(self.spin_flip_map)
         self.is_expand = False
         self.u_matrices_list = []
 
@@ -59,7 +57,8 @@ class Symmetrizer:
             rotation, translation, time_reversal = self._operations[i]
             self.site_maps[i] = site_mapping(self._system.real_lattice, self.orb_site_pos,
                                              rotation, translation)
-            # print(self.site_maps[i])
+            print('site map %d' % i)
+            print(self.site_maps[i])
         return
 
     def _update_R_vec_pool(self, is_expand: bool):
@@ -239,8 +238,6 @@ class Symmetrizer:
             # print('operator %d: ' % isym)
             rotation, translation, time_reversal = self._operations[isym]
 
-            axis, angle, is_inv = rotation_to_axis_angle(rotation, self._system.real_lattice)
-
             args = [self._system.real_lattice,
                     self.orb_site_indices,
                     self.orb_site_lens, self.site_maps[isym],
@@ -249,9 +246,6 @@ class Symmetrizer:
                     rotation, translation,
                     self.is_soc, self._system.orb_is_laxis]
             u_matrices_arr = _u_matrices_site_par(*args)
-
-            print('%4d [%10.6f %10.6f %10.6f] %10.6f'
-                  % (isym, axis[0], axis[1], axis[2], angle/np.pi), is_inv, time_reversal)
 
             self.u_matrices_list.append(u_matrices_arr)
         # print(self.u_matrices_list[2][0])
@@ -336,7 +330,7 @@ def _u_matrices_site_par(real_lattice: NDArray,
     return u_matrices_arr
 
 
-@njit(parallel=True, cache=True, nogil=True)
+# @njit(parallel=True, cache=True, nogil=True)
 def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                      rotation, site_map, u_matrices, orb_site_indices, orb_site_lens, spin_flip_map,
                      is_soc_tr, is_tr_only):
@@ -384,7 +378,7 @@ def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                 # R_eff = S @ R + v_b - v_a
                 rv_src = R_vec_pool[ir].astype(np.float64)
                 rv_eff = np.rint(rotation @ rv_src + shift)
-                # print(rv_src, rv_eff)
+                print(rv_src, rv_eff)
                 # Binary search for R index
                 ir_tgt = find_R_vec(rv_eff, R_vec_pool)
                 # print(ir, ir_tgt)
@@ -684,9 +678,10 @@ def orbital_mapping(lattice: NDArray, orb_pos: NDArray, orb_lmsr: NDArray,
 
 @njit(nogil=True)
 def site_mapping(lattice: NDArray, site_positions: NDArray,
-                 rotation: NDArray, translation: NDArray) -> NDArray:
+                 rotation: NDArray, translation: NDArray, dim=3) -> NDArray:
     nsites = site_positions.shape[0]
     mapping = np.zeros((nsites, 4), dtype=np.int_)
+    # rot = -rotation if is_inv else rotation
     for i in range(nsites):
         tau_new = rotation @ site_positions[i] + translation
         found = False
@@ -696,10 +691,10 @@ def site_mapping(lattice: NDArray, site_positions: NDArray,
             remainder = (diff - rvec).astype(np.float64)
             if np.linalg.norm(remainder @ lattice) < EPS5:
                 mapping[i, 0] = j
-                mapping[i, 1:] = rvec
+                mapping[i, 1:dim+1] = rvec[:dim]
                 found = True
                 break
-        if not found:
+        if not found: # should not happen
             mapping[i, 0] = -1
             mapping[i, 1:] = np.zeros(3)
     return mapping

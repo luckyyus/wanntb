@@ -8,6 +8,9 @@ import numpy as np
 from datetime import datetime
 from typing import Tuple, List, Dict
 from numba import njit
+
+from ._rotate import rotation_to_axis_angle
+
 try:
     import spglib
 except ImportError:
@@ -38,21 +41,29 @@ def get_symmetry(real_lattice: np.ndarray, positions: np.ndarray, types: np.ndar
     print(data.hall)
     print(data.international)
     print(data.site_symmetry_symbols)
+
     print('time used: %24.2f <-- get_symmetry' % (datetime.now() - start).total_seconds())
-    return SymmetryOperators(symm, is_magnetic=is_magnetic)
+    return SymmetryOperators(symm, real_lattice, is_magnetic=is_magnetic)
 
 
 class SymmetryOperators:
 
-    def __init__(self, symm, is_magnetic=True):
+    def __init__(self, symm, real_lattice, is_magnetic=True):
         self.rotations = symm['rotations'].astype(np.float64)
         self.n_operators = self.rotations.shape[0]
         self.translations = symm['translations']
         self.time_reversals = symm['time_reversals'] if is_magnetic else -np.ones(self.n_operators)
         self.is_enabled = np.ones(self.n_operators, dtype=bool)
+
+        axis_angles = []
+        for isym in range(self.n_operators):
+            axis, angle, is_inv = rotation_to_axis_angle(self.rotations[isym], real_lattice)
+            axis_angles.append({'axis': axis, 'angle': angle, 'is_inv': is_inv})
+        self.axis_angles = axis_angles
         for idx in range(self.n_operators):
             assert np.allclose(self.rotations[idx], np.round(self.rotations[idx]), atol=DEFAULT_SYMM_TOLERANCE), \
                 f"WARNING: Symmetry operation rotation matrix is not compatible with integer lattice!\n"
+
 
     def print_symmetry(self):
         start = datetime.now()
@@ -63,7 +74,10 @@ class SymmetryOperators:
             print('Rotation:')
             print(np.array2string(self.rotations[idx], precision=0, suppress_small=True))
             print(f'Translation: {np.array2string(self.translations[idx], precision=6, suppress_small=True)}')
-            print(f'Time_reversal: {self.time_reversals[idx]}')
+            axis_angle = self.axis_angles[idx]
+            print('Time_reversal: %s; axis:%8.4f%8.4f%8.4f; angle/pi:%8.4f; is_inv: %s' %
+                  (str(self.time_reversals[idx]), axis_angle['axis'][0], axis_angle['axis'][1], axis_angle['axis'][2],
+                   axis_angle['angle']/np.pi, str(axis_angle['is_inv'])))
         print('time used: %24.2f <-- print_symmetry' % (datetime.now() - start).total_seconds())
 
     def __getitem__(self, idx):

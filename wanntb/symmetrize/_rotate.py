@@ -1,12 +1,10 @@
+from typing import Tuple
+
 import numpy as np
 from numpy.typing import NDArray
-from typing import Tuple
-from numba import njit, types
-from numba.typed import typeddict
+from numba import njit
 
-
-from ..constant import S_, TwoPi, V2, EPS6, MAX_L
-
+from ..constant import S_, V2, EPS6, MAX_L, TwoPi
 from ..utility import normalize_vector
 
 
@@ -139,8 +137,8 @@ def rotate_Ylm(l: int, axis: NDArray|tuple[float, float, float], alpha: float, i
     返回:
         (2l+1)x(2l+1)旋转矩阵。
     """
-    if l == 0:  # s 轨道
-        return np.array([1.0], dtype=np.complex128)
+    # if l == 0:  # s 轨道
+    #     return np.array([1.0], dtype=np.complex128)
     Lx, Ly, Lz = L_matrix(l)
     # 旋转生成器: n·L
     L_dot_n = axis[0] * Lx + axis[1] * Ly + axis[2] * Lz
@@ -496,4 +494,3 @@ def rotation_to_axis_angle(rotation: NDArray, lattice: NDArray) -> Tuple[NDArray
         angle += TwoPi
 
     return axis, angle, is_inversion
-
