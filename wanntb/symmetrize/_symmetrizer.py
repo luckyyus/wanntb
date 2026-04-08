@@ -15,7 +15,7 @@ from ._rotate import (rotate_spinor, rotation_to_axis_angle, rotate_real_Ylm,
 class Symmetrizer:
 
     def __init__(self, system: TBSystem, magmom_str: str|None = None,
-                 symprec: float = DEFAULT_SYMM_TOLERANCE, is_soc: bool = True, dim: int=3):
+                 symprec: float = DEFAULT_SYMM_TOLERANCE, is_soc: bool = True, inv_center=(0.0, 0.0, 0.0)):
         self._system = system
         self._operations: SymmetryOperators = get_symmetry(self._system.real_lattice,
                                                            self._system.atom_pos, self._system.atom_spec,
@@ -23,7 +23,7 @@ class Symmetrizer:
                                                            tol=symprec)
         self._operations.print_symmetry()
         self.is_soc = is_soc
-        self.dim = dim
+        self.inv_center = np.array(inv_center, dtype=np.float64)
         # process orbital sites data (positions, indices and the length)
         self.orb_site_pos, _orb_site_indices = group_orbitals_by_site(self._system.orb_pos)
         print('orb_site_pos: %s %s' % (self.orb_site_pos.dtype, list(self.orb_site_pos.shape)))
@@ -53,10 +53,11 @@ class Symmetrizer:
     def _update_site_mapping(self):
         n_op = len(self._operations)
         self.site_maps = np.zeros((n_op, self.n_orb_sites, 4), dtype=np.int_)
-        for i in range(len(self._operations)):
+        for i in range(n_op):
             rotation, translation, time_reversal = self._operations[i]
+            is_inv = self._operations.axis_angles[i]['is_inv']
             self.site_maps[i] = site_mapping(self._system.real_lattice, self.orb_site_pos,
-                                             rotation, translation)
+                                             rotation, translation, is_inv, self.inv_center)
             print('site map %d' % i)
             print(self.site_maps[i])
         return
@@ -95,6 +96,7 @@ class Symmetrizer:
         else:
             self.R_vec_pool = self._system.R_vec.copy()
         self.n_Rpts_pool = self.R_vec_pool.shape[0]
+        np.savetxt('R_vec_pool.txt', self.R_vec_pool, fmt='%4d')
 
     def symmetrize(self, tasks: str,
                    disable_list: List[int] | None = None,
@@ -351,7 +353,7 @@ def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
     # However, different (a, b) pairs might map to the same (a_tgt, b_tgt)
     # if the symmetry operation has a translation. But they will map to different R.
     # So we should be safe with prange if we are careful.
-
+    is_p = False
     for a in prange(nsites):
         a_tgt = site_map[a, 0]
         if a_tgt < 0: continue
@@ -378,13 +380,15 @@ def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                 # R_eff = S @ R + v_b - v_a
                 rv_src = R_vec_pool[ir].astype(np.float64)
                 rv_eff = np.rint(rotation @ rv_src + shift)
-                print(rv_src, rv_eff)
+                # print(rv_src, rv_eff)
                 # Binary search for R index
                 ir_tgt = find_R_vec(rv_eff, R_vec_pool)
                 # print(ir, ir_tgt)
                 if ir_tgt < 0: continue #should not happen
 
                 # Extract block H_ab
+                # oo_block[:,:] = oo_R[ir, idx_a, idx_b]
+                # oo_orig[:,:] = oo_R[ir_tgt, idx_a_tgt, idx_b_tgt]
                 for i_a in range(n_a):
                     for j_b in range(n_b):
                         oo_block[i_a, j_b] = oo_R[ir, idx_a[i_a], idx_b[j_b]]
@@ -399,16 +403,26 @@ def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                 # Use contiguous arrays for better performance with '@'
                 oo_rot = U_a @ np.ascontiguousarray(oo_block) @ U_b_H
 
+                diff = np.max(np.abs(oo_rot - oo_orig))
+                if diff > DEFAULT_HAM_TOLERANCE and not is_p:
+                    print('rv_src:', rv_src)
+                    np.savetxt('oo_block.txt', oo_block, fmt='%8.4f')
+                    print('v_a:', v_a, 'v_b:', v_b)
+                    print('rv_eff:', rv_eff)
+                    np.savetxt('oo_rot.txt', oo_rot, fmt='%8.4f')
+                    np.savetxt('oo_orig.txt', oo_orig, fmt='%8.4f')
+                    is_p = True
                 # Accumulate
                 # Atomic add is not directly available in prange for complex
                 # But since each (ir, a, b) contributes to a unique (a_tgt, b_tgt, ir_tgt)
                 # for a FIXED symmetry operation, we don't have race conditions here.
+                # oo_out[ir_tgt, idx_a_tgt, idx_b_tgt] = oo_rot[:, :]
                 for i_a in range(n_a):
                     for j_b in range(n_b):
-                        _p = np.abs(oo_orig[i_a, j_b] - oo_rot[i_a, j_b])
-                        _n = np.abs(oo_orig[i_a, j_b] + oo_rot[i_a, j_b])
+                #         _p = np.abs(oo_orig[i_a, j_b] - oo_rot[i_a, j_b])
+                #         _n = np.abs(oo_orig[i_a, j_b] + oo_rot[i_a, j_b])
                         oo_out[ir_tgt, idx_a_tgt[i_a], idx_b_tgt[j_b]] = oo_rot[i_a, j_b]
-                                                                          # if _p < _n or _n < DEFAULT_HAM_TOLERANCE
+                #                                                           # if _p < _n or _n < DEFAULT_HAM_TOLERANCE
                                                                          # else -oo_rot[i_a, j_b])
     return oo_out
 
@@ -678,12 +692,14 @@ def orbital_mapping(lattice: NDArray, orb_pos: NDArray, orb_lmsr: NDArray,
 
 @njit(nogil=True)
 def site_mapping(lattice: NDArray, site_positions: NDArray,
-                 rotation: NDArray, translation: NDArray, dim=3) -> NDArray:
+                 rotation: NDArray, translation: NDArray, is_inv, center) -> NDArray:
     nsites = site_positions.shape[0]
     mapping = np.zeros((nsites, 4), dtype=np.int_)
     # rot = -rotation if is_inv else rotation
     for i in range(nsites):
         tau_new = rotation @ site_positions[i] + translation
+        if is_inv:
+            tau_new += 2*center
         found = False
         for j in range(nsites):
             diff = tau_new - site_positions[j]
@@ -691,7 +707,7 @@ def site_mapping(lattice: NDArray, site_positions: NDArray,
             remainder = (diff - rvec).astype(np.float64)
             if np.linalg.norm(remainder @ lattice) < EPS5:
                 mapping[i, 0] = j
-                mapping[i, 1:dim+1] = rvec[:dim]
+                mapping[i, 1:] = rvec
                 found = True
                 break
         if not found: # should not happen
