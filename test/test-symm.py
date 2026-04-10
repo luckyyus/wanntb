@@ -25,8 +25,10 @@ npzfile = os.path.join('tbdata', path + '-tb.npz')
 tb = wanntb.get_tbsystem_by_npz_file(npz_file=npzfile)
 
 tb.output_bands_kpath(kpath, nkpts_path=100, filename=path + '-bands-orig.txt')
-
+# print(tb.atom_pos)
+# print(tb.get_onsite_energy())
 symm = wanntb.symmetrize.Symmetrizer(tb, magmom_str='0 0 5 0 0 -5 36*0', is_soc=True)
+# print(symm.site_maps[1])
 # symm = wanntb.symmetrize.Symmetrizer(tb, magmom_str='5 -5 5 18*0', is_soc=True)
 # symm = wanntb.symmetrize.Symmetrizer(tb, magmom_str='0 0', is_soc=True)
 

@@ -15,7 +15,7 @@ from ._rotate import (rotate_spinor, rotation_to_axis_angle, rotate_real_Ylm,
 class Symmetrizer:
 
     def __init__(self, system: TBSystem, magmom_str: str|None = None,
-                 symprec: float = DEFAULT_SYMM_TOLERANCE, is_soc: bool = True, inv_center=(0.0, 0.0, 0.0)):
+                 symprec: float = DEFAULT_SYMM_TOLERANCE, is_soc: bool = True):
         self._system = system
         self._operations: SymmetryOperators = get_symmetry(self._system.real_lattice,
                                                            self._system.atom_pos, self._system.atom_spec,
@@ -23,7 +23,6 @@ class Symmetrizer:
                                                            tol=symprec)
         self._operations.print_symmetry()
         self.is_soc = is_soc
-        self.inv_center = np.array(inv_center, dtype=np.float64)
         # process orbital sites data (positions, indices and the length)
         self.orb_site_pos, _orb_site_indices = group_orbitals_by_site(self._system.orb_pos)
         print('orb_site_pos: %s %s' % (self.orb_site_pos.dtype, list(self.orb_site_pos.shape)))
@@ -39,7 +38,9 @@ class Symmetrizer:
             self.orb_site_lens[i] = n_idx
         print('orb_site_indices:')
         print(self.orb_site_indices)
-        print('orb_site_lens: %s' % str(self.orb_site_lens))
+        # print('orb_site_pos:')
+        # print(self.orb_site_pos)
+        # print('orb_site_lens: %s' % str(self.orb_site_lens))
 
         self.R_vec_pool = None
         self.n_Rpts_pool = 0
@@ -55,11 +56,9 @@ class Symmetrizer:
         self.site_maps = np.zeros((n_op, self.n_orb_sites, 4), dtype=np.int_)
         for i in range(n_op):
             rotation, translation, time_reversal = self._operations[i]
-            is_inv = self._operations.axis_angles[i]['is_inv']
+            # is_inv = self._operations.axis_angles[i]['is_inv']
             self.site_maps[i] = site_mapping(self._system.real_lattice, self.orb_site_pos,
-                                             rotation, translation, is_inv, self.inv_center)
-            print('site map %d' % i)
-            print(self.site_maps[i])
+                                             rotation, translation)
         return
 
     def _update_R_vec_pool(self, is_expand: bool):
@@ -373,19 +372,21 @@ def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
             idx_b_tgt = orb_site_indices[b_tgt, :n_b]
 
             U_b_H = np.ascontiguousarray(np.conj(u_matrices[b, :n_b, :n_b].T))
-            shift = (v_b - v_a).astype(np.float64)
+            shift = v_b - v_a
             oo_block = np.zeros((n_a, n_b), dtype=np.complex128)
             oo_orig = np.zeros((n_a, n_b), dtype=np.complex128)
             for ir in range(n_Rpts_pool):
-                # R_eff = S @ R + v_b - v_a
+                # R_eff = S @ R + v_b - v_a! 这里出错了！至少对Inv出错了
+                # r_src = R_vec_pool[ir]
                 rv_src = R_vec_pool[ir].astype(np.float64)
-                rv_eff = np.rint(rotation @ rv_src + shift)
-                # print(rv_src, rv_eff)
+                # rv_src = (r_src + v_b - v_a).astype(np.float64)
+                rv_tgt = np.rint(rotation @ rv_src) - shift
+                # print(rv_src, rv_tgt)
                 # Binary search for R index
-                ir_tgt = find_R_vec(rv_eff, R_vec_pool)
+                ir_tgt = find_R_vec(rv_tgt, R_vec_pool)
                 # print(ir, ir_tgt)
                 if ir_tgt < 0: continue #should not happen
-
+                # assert ir_tgt >= 0, 'rv_tgt %s not found' % str(rv_tgt)
                 # Extract block H_ab
                 # oo_block[:,:] = oo_R[ir, idx_a, idx_b]
                 # oo_orig[:,:] = oo_R[ir_tgt, idx_a_tgt, idx_b_tgt]
@@ -404,11 +405,12 @@ def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                 oo_rot = U_a @ np.ascontiguousarray(oo_block) @ U_b_H
 
                 diff = np.max(np.abs(oo_rot - oo_orig))
-                if diff > DEFAULT_HAM_TOLERANCE and not is_p:
+                if diff > 2 * DEFAULT_HAM_TOLERANCE and not is_p:
                     print('rv_src:', rv_src)
+                    print(a, '-->', a_tgt, 'v_a:', v_a)
+                    print(b, '-->', b_tgt, 'v_b:', v_b)
+                    print('rv_tgt:', rv_tgt)
                     np.savetxt('oo_block.txt', oo_block, fmt='%8.4f')
-                    print('v_a:', v_a, 'v_b:', v_b)
-                    print('rv_eff:', rv_eff)
                     np.savetxt('oo_rot.txt', oo_rot, fmt='%8.4f')
                     np.savetxt('oo_orig.txt', oo_orig, fmt='%8.4f')
                     is_p = True
@@ -690,16 +692,13 @@ def orbital_mapping(lattice: NDArray, orb_pos: NDArray, orb_lmsr: NDArray,
     return mapping
 
 
-@njit(nogil=True)
+# @njit(nogil=True)
 def site_mapping(lattice: NDArray, site_positions: NDArray,
-                 rotation: NDArray, translation: NDArray, is_inv, center) -> NDArray:
+                 rotation: NDArray, translation: NDArray) -> NDArray:
     nsites = site_positions.shape[0]
     mapping = np.zeros((nsites, 4), dtype=np.int_)
-    # rot = -rotation if is_inv else rotation
     for i in range(nsites):
         tau_new = rotation @ site_positions[i] + translation
-        if is_inv:
-            tau_new += 2*center
         found = False
         for j in range(nsites):
             diff = tau_new - site_positions[j]
