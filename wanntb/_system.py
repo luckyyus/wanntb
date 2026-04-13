@@ -80,7 +80,7 @@ class TBSystem:
                 # WF centers in cart. coordinate
                 self.wann_centers_cart = np.diagonal(self.r_mat_R[ir, :, :, :], axis1=1, axis2=2).T.real
                 # print(self.wann_centers_cart)
-                self.wann_centers_frac = (self.wann_centers_cart @ self.recip_lattice) / TwoPi
+                self.wann_centers_frac = (self.wann_centers_cart @ self.recip_lattice.T) / TwoPi
                 # print(self.wann_centers_frac)
                 break
 
@@ -167,10 +167,10 @@ class TBSystem:
 # the four functions below is usually for double check
 
     def r_cart_to_frac(self, r_cart):
-        return r_cart @ self.recip_lattice / TwoPi
+        return r_cart @ self.recip_lattice.T / TwoPi
 
     def k_cart_to_frac(self, k_cart):
-        return k_cart @ self.real_lattice / TwoPi
+        return k_cart @ self.real_lattice.T/ TwoPi
 
     def r_frac_to_cart(self, r_frac):
         return r_frac @ self.real_lattice

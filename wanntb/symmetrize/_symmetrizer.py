@@ -36,16 +36,16 @@ class Symmetrizer:
             n_idx = len(idx_arr)
             self.orb_site_indices[i, :n_idx] = idx_arr
             self.orb_site_lens[i] = n_idx
-        print('orb_site_indices:')
-        print(self.orb_site_indices)
-        # print('orb_site_pos:')
-        # print(self.orb_site_pos)
-        # print('orb_site_lens: %s' % str(self.orb_site_lens))
-
+        print('orb_sites updated.')
+        # print('orb_site_indices:')
+        # print(self.orb_site_indices)
         self.R_vec_pool = None
         self.n_Rpts_pool = 0
         self.site_maps = None
+        self._update_site_mapping()
+        print('site_maps: %s %s' % (self.site_maps.dtype, list(self.site_maps.shape)))
         self.spin_flip_map = spin_flip_mapping(self._system.orb_pos, self._system.orb_lmsr)
+        print('spin_flip_map updated.')
         # print('spin_flip_map:')
         # print(self.spin_flip_map)
         self.is_expand = False
@@ -53,7 +53,7 @@ class Symmetrizer:
 
     def _update_site_mapping(self):
         n_op = len(self._operations)
-        self.site_maps = np.zeros((n_op, self.n_orb_sites, 4), dtype=np.int_)
+        self.site_maps = np.zeros((n_op, self.n_orb_sites, 4), dtype=np.int16)
         for i in range(n_op):
             rotation, translation, time_reversal = self._operations[i]
             # is_inv = self._operations.axis_angles[i]['is_inv']
@@ -65,8 +65,6 @@ class Symmetrizer:
         self.is_expand = is_expand
         if is_expand:
             n_sites = self.orb_site_pos.shape[0]
-            if self.site_maps is None:
-                self._update_site_mapping()
             Rvec_set = set()
             for ir in range(self._system.n_Rpts):
                 Rvec_set.add(tuple(self._system.R_vec[ir]))
@@ -115,14 +113,14 @@ class Symmetrizer:
         _tasks = tasks.lower()
         l_ham = True if 'h' in _tasks else False
         l_rmat = True if ('a' in _tasks or 'r' in _tasks) else False
-        l_ss = True if 's' in _tasks else False
-
-
+        l_ss = True if ('s' in _tasks and self._system.ss_R is not None) else False
+        print('l_ham:', l_ham, ' l_rmat:', l_rmat, ' l_ss:', l_ss)
         n_orbs = self._system.num_wann
-        if self.site_maps is None:
-            self._update_site_mapping()
+
         self._update_R_vec_pool(is_expand)
         print('R_vec_pool:', self.R_vec_pool.dtype, self.R_vec_pool.shape)
+        np.savetxt('R_vec_pool.txt', self.R_vec_pool, fmt='%4d')
+        np.savetxt('R_vec_orig.txt', self._system.R_vec, fmt='%4d')
         print('time used: %24.2f <-- update R_vec_pool' % (datetime.now() - start).total_seconds())
 
         self._update_u_matrices()
@@ -133,20 +131,19 @@ class Symmetrizer:
         args_expand1 = [self._system.r_mat_R] + args_expand
         args_expand2 = [self._system.ss_R] + args_expand
 
-        ham_orig = _get_oo_with_expand_R_vec(*args_expand0) if is_expand else self._system.ham_R
-        r_mat_orig = _get_oo3_with_expand_R_vec(*args_expand1) if is_expand else self._system.r_mat_R
+        ham_orig = oo_with_expand_R_vec(*args_expand0) if is_expand else self._system.ham_R
+        print('ham_orig: %s %s' % (ham_orig.dtype, list(ham_orig.shape)))
+        r_mat_orig = oo_with_expand_R_vec(*args_expand1) if is_expand else self._system.r_mat_R
+        print('r_mat_orig: %s %s' % (r_mat_orig.dtype, list(r_mat_orig.shape)))
         ss_orig = None
-        if self._system.ss_R is not None:
-            ss_orig = _get_oo3_with_expand_R_vec(*args_expand2) if is_expand else self._system.ss_R
-
         if l_ham:
             hams = np.zeros((n_enabled, self.n_Rpts_pool, n_orbs, n_orbs), dtype=np.complex128)
         if l_rmat:
             r_mats = np.zeros((n_enabled, self.n_Rpts_pool, 3, n_orbs, n_orbs), dtype=np.complex128)
         if l_ss:
-            assert self._system.ss_R is not None, 'ss_R data is missing but symmetrizing spin matrices is required.'
+            ss_orig = oo_with_expand_R_vec(*args_expand2) if is_expand else self._system.ss_R
+            print('ss_orig: %s %s' % (ss_orig.dtype, list(ss_orig.shape)))
             s_mats = np.zeros((n_enabled, self.n_Rpts_pool, 3, n_orbs, n_orbs), dtype=np.complex128)
-
 
         idx_enable = 0
         for isym in range(len(self._operations)):
@@ -234,9 +231,7 @@ class Symmetrizer:
         return ham_out, r_mat_out, ss_out, self.R_vec_pool
 
     def _update_u_matrices(self):
-
         for isym in range(len(self._operations)):
-            # print('operator %d: ' % isym)
             rotation, translation, time_reversal = self._operations[isym]
 
             args = [self._system.real_lattice,
@@ -249,8 +244,6 @@ class Symmetrizer:
             u_matrices_arr = _u_matrices_site_par(*args)
 
             self.u_matrices_list.append(u_matrices_arr)
-        # print(self.u_matrices_list[2][0])
-        # np.savetxt('u_12.txt', self.u_matrices_list[12][0], fmt='%8.4f')
 
 @njit(parallel=True, cache=True, nogil=True)
 def _check_tolerance_R_par(oo_orig, oo_symm, R_vec_pool, n_rpts):
@@ -309,7 +302,6 @@ def _u_matrices_site_par(real_lattice: NDArray,
     if is_local_axis:
         rot_cart = rotation_in_cart(rotation, real_lattice)
     axis, angle, is_inv = rotation_to_axis_angle(rotation, real_lattice)
-    # print(axis, angle, is_inv)
     L_rot = get_all_L_rotation_matrix(axis, angle, is_inv)
     s_rot = rotate_spinor(axis, angle) if is_soc else np.eye(2, dtype=np.complex128)
 
@@ -318,7 +310,6 @@ def _u_matrices_site_par(real_lattice: NDArray,
         idx_src = site_indices[i, :site_lens[i]]
         tgt_idx = site_map[i, 0]
         idx_tgt = site_indices[tgt_idx, :site_lens[i]]
-        # print('%d, idx_src[%d]: %s, idx_tgt[%d]: %s' % (i, i, str(idx_src), tgt_idx, str(idx_tgt)))
         if tgt_idx < 0:
             continue
         if is_local_axis:
@@ -352,7 +343,7 @@ def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
     # However, different (a, b) pairs might map to the same (a_tgt, b_tgt)
     # if the symmetry operation has a translation. But they will map to different R.
     # So we should be safe with prange if we are careful.
-    is_p = False
+    # is_p = 0
     for a in prange(nsites):
         a_tgt = site_map[a, 0]
         if a_tgt < 0: continue
@@ -374,26 +365,19 @@ def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
             U_b_H = np.ascontiguousarray(np.conj(u_matrices[b, :n_b, :n_b].T))
             shift = v_b - v_a
             oo_block = np.zeros((n_a, n_b), dtype=np.complex128)
-            oo_orig = np.zeros((n_a, n_b), dtype=np.complex128)
+            # oo_orig = np.zeros((n_a, n_b), dtype=np.complex128)
             for ir in range(n_Rpts_pool):
                 # R_eff = S @ R + v_b - v_a! 这里出错了！至少对Inv出错了
-                # r_src = R_vec_pool[ir]
                 rv_src = R_vec_pool[ir].astype(np.float64)
-                # rv_src = (r_src + v_b - v_a).astype(np.float64)
-                rv_tgt = np.rint(rotation @ rv_src) - shift
-                # print(rv_src, rv_tgt)
+                rv_tgt = np.rint(rotation @ rv_src) + shift
                 # Binary search for R index
                 ir_tgt = find_R_vec(rv_tgt, R_vec_pool)
-                # print(ir, ir_tgt)
                 if ir_tgt < 0: continue #should not happen
-                # assert ir_tgt >= 0, 'rv_tgt %s not found' % str(rv_tgt)
                 # Extract block H_ab
-                # oo_block[:,:] = oo_R[ir, idx_a, idx_b]
-                # oo_orig[:,:] = oo_R[ir_tgt, idx_a_tgt, idx_b_tgt]
                 for i_a in range(n_a):
                     for j_b in range(n_b):
                         oo_block[i_a, j_b] = oo_R[ir, idx_a[i_a], idx_b[j_b]]
-                        oo_orig[i_a, j_b] = oo_R[ir_tgt, idx_a_tgt[i_a], idx_b_tgt[j_b]]
+                        # oo_orig[i_a, j_b] = oo_R[ir_tgt, idx_a_tgt[i_a], idx_b_tgt[j_b]]
 
                 # Handle Magnetic Symmetry
                 if is_soc_tr:
@@ -404,16 +388,15 @@ def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                 # Use contiguous arrays for better performance with '@'
                 oo_rot = U_a @ np.ascontiguousarray(oo_block) @ U_b_H
 
-                diff = np.max(np.abs(oo_rot - oo_orig))
-                if diff > 2 * DEFAULT_HAM_TOLERANCE and not is_p:
-                    print('rv_src:', rv_src)
-                    print(a, '-->', a_tgt, 'v_a:', v_a)
-                    print(b, '-->', b_tgt, 'v_b:', v_b)
-                    print('rv_tgt:', rv_tgt)
-                    np.savetxt('oo_block.txt', oo_block, fmt='%8.4f')
-                    np.savetxt('oo_rot.txt', oo_rot, fmt='%8.4f')
-                    np.savetxt('oo_orig.txt', oo_orig, fmt='%8.4f')
-                    is_p = True
+                # diff = np.max(np.abs(oo_rot - oo_orig))
+                # if diff > 2 * DEFAULT_HAM_TOLERANCE and is_p < 2:
+                #     print('ir, rv_src:', ir, rv_src,'-->', 'ir_tgt, rv_tgt:', ir_tgt, rv_tgt)
+                #     print(a, '-->', a_tgt, 'v_a:', v_a)
+                #     print(b, '-->', b_tgt, 'v_b:', v_b)
+                #     np.savetxt('oo_block.txt', oo_block.real, fmt='%8.4f')
+                #     np.savetxt('oo_rot.txt', oo_rot.real, fmt='%8.4f')
+                #     np.savetxt('oo_orig.txt', oo_orig.real, fmt='%8.4f')
+                #     is_p += 1
                 # Accumulate
                 # Atomic add is not directly available in prange for complex
                 # But since each (ir, a, b) contributes to a unique (a_tgt, b_tgt, ir_tgt)
@@ -421,11 +404,7 @@ def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                 # oo_out[ir_tgt, idx_a_tgt, idx_b_tgt] = oo_rot[:, :]
                 for i_a in range(n_a):
                     for j_b in range(n_b):
-                #         _p = np.abs(oo_orig[i_a, j_b] - oo_rot[i_a, j_b])
-                #         _n = np.abs(oo_orig[i_a, j_b] + oo_rot[i_a, j_b])
                         oo_out[ir_tgt, idx_a_tgt[i_a], idx_b_tgt[j_b]] = oo_rot[i_a, j_b]
-                #                                                           # if _p < _n or _n < DEFAULT_HAM_TOLERANCE
-                                                                         # else -oo_rot[i_a, j_b])
     return oo_out
 
 @njit(parallel=True, cache=True, nogil=True)
@@ -465,7 +444,7 @@ def _rotate3_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
             for ir in range(n_Rpts_pool):
                 # R_eff = S @ R + v_b - v_a
                 rv_src = R_vec_pool[ir].astype(np.float64)
-                rv_eff = np.rint(rotation @ rv_src + shift)
+                rv_eff = np.rint(rotation @ rv_src) + shift
 
                 # Binary search for R index
                 ir_tgt = find_R_vec(rv_eff, R_vec_pool)
@@ -473,12 +452,10 @@ def _rotate3_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
 
                 for i in range(3):
                     oo_block = np.zeros((n_a, n_b), dtype=np.complex128)
-                    # oo_orig = np.zeros((n_a, n_b), dtype=np.complex128)
 
                     for i_a in range(n_a):
                         for j_b in range(n_b):
                             oo_block[i_a, j_b] = oo_R[ir, i, idx_a[i_a], idx_b[j_b]]
-                            # oo_orig[i_a, j_b] = oo_R[ir_tgt, i, idx_a_tgt[i_a], idx_b_tgt[j_b]]
 
                     if is_soc_tr:
                         oo_block = _apply_soc_tr(oo_block, idx_a, idx_b, spin_flip_map)
@@ -488,36 +465,16 @@ def _rotate3_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
 
                     for i_a in range(n_a):
                         for j_b in range(n_b):
-                            # _p = np.abs(oo_orig[i_a, j_b] - oo_rot[i_a, j_b])
-                            # _n = np.abs(oo_orig[i_a, j_b] + oo_rot[i_a, j_b])
                             oo_out[ir_tgt, i, idx_a_tgt[i_a], idx_b_tgt[j_b]] = oo_rot[i_a, j_b]
-                                                                                 # if _p < _n
-                                                                                # else -oo_rot[i_a, j_b])
     return oo_out
 
 
-@njit(cache=True, nogil=True)
-def _get_oo_with_expand_R_vec(oo_R: NDArray[np.complex128],
-                              R_vec: NDArray[np.int16], num_wann: int,
-                              R_vec_pool: NDArray[np.int16], n_Rpts_pool: int) -> NDArray[np.complex128]:
+def oo_with_expand_R_vec(oo_R: NDArray[np.complex128],
+                         R_vec: NDArray[np.int16], num_wann: int,
+                         R_vec_pool: NDArray[np.int16], n_Rpts_pool: int) -> NDArray[np.complex128]:
     nrpt_in = R_vec.shape[0]
-    oo_out = np.zeros((n_Rpts_pool, num_wann, num_wann), dtype=np.complex128)
-
-    for ir in range(nrpt_in):
-        rv = R_vec[ir]
-        ir_tgt = find_R_vec(rv, R_vec_pool)
-        if ir_tgt < 0: continue
-        oo_out[ir_tgt] = oo_R[ir]
-
-    return oo_out
-
-@njit(cache=True, nogil=True)
-def _get_oo3_with_expand_R_vec(oo_R: NDArray[np.complex128],
-                              R_vec: NDArray[np.int16], num_wann: int,
-                              R_vec_pool: NDArray[np.int16], n_Rpts_pool: int) -> NDArray[np.complex128]:
-
-    nrpt_in = R_vec.shape[0]
-    oo_out = np.zeros((n_Rpts_pool, 3, num_wann, num_wann), dtype=np.complex128)
+    oo_out = np.zeros((n_Rpts_pool, num_wann, num_wann), dtype=np.complex128) if len(oo_R.shape) == 3 \
+        else np.zeros((n_Rpts_pool, 3, num_wann, num_wann), dtype=np.complex128)
 
     for ir in range(nrpt_in):
         rv = R_vec[ir]
@@ -593,10 +550,6 @@ def _u_matrix_one_site(indices_src, indices_tgt, orb_lmsr, L_rot, s_rot, is_soc)
     n_tgt = indices_tgt.shape[0]
     U = np.zeros((n_tgt, n_src), dtype=np.complex128)
 
-    # src_map = {(orb_lmsr[i, 0],orb_lmsr[i, 1], orb_lmsr[i, 2]): i_loc
-    #            for i_loc, i in enumerate(indices_src)}
-    # tgt_map = {(orb_lmsr[i, 0],orb_lmsr[i, 1], orb_lmsr[i, 2]): i_loc
-    #            for i_loc, i in enumerate(indices_tgt)}
     for i_loc in range(n_src):
         i = indices_src[i_loc]
         l, mr, ms = orb_lmsr[i, 0], orb_lmsr[i, 1], orb_lmsr[i, 2]
@@ -608,18 +561,6 @@ def _u_matrix_one_site(indices_src, indices_tgt, orb_lmsr, L_rot, s_rot, is_soc)
                 U[j_loc, i_loc] = L_rot[l, mr_prime, mr] * s_rot[ms_prime, ms]
             else:
                 U[j_loc, i_loc] = L_rot[l, mr_prime, mr]
-
-        # for mr_prime in range(0, 2*l + 1):
-        #     if is_soc:
-        #         for ms_prime in [0, 1]:
-        #
-        #             if (l, mr_prime, ms_prime) in tgt_map:
-        #                 j_loc = tgt_map[(l, mr_prime, ms_prime)]
-        #                 U[j_loc, i_loc] = D_l[l][mr_prime, mr] * s_rot[ms_prime, ms]
-        #     else:
-        #         if (l, mr_prime, ms) in tgt_map:
-        #             j_loc = tgt_map[(l, mr_prime, ms)]
-        #             U[j_loc, i_loc] = D_l[l][mr_prime, mr]
     return U
 
 
