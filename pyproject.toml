@@ -6,7 +6,7 @@ name = "wanntb"
 version = "2026.4.13"
 authors = [{name = 'Jie-Xiang Yu', email = 'kaelthas.yu@gmail.com'},
     {name = 'Sheng Pan'},
-    {name = 'Jia-Lu Fu'},
+    {name = 'Jia-Lu Fu', email = 'luluffan@gmail.com'},
     {name = 'Hong-Fei Huang'},
     {name = 'Bao-Feng Chen', email = 'baofengchen2024@gmail.com'}]
 description = 'Toolkits based on WF based tight-binding Hamiltonian'
