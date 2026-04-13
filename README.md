@@ -1,4 +1,4 @@
-# wanntb
+# WannTB
 
 Toolkits based on WF based tight-binding Hamiltonian
 
