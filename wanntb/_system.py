@@ -440,7 +440,7 @@ class TBSystem:
         print('time used: %24.2f <-- berry_calc_kpath' % (datetime.now() - start).total_seconds())
         return output
     
-    def edelstein_calc_fermi(self,
+    def edelstein_calc_fermi(self, tasks: str,
                          kmesh: tuple[int, int, int],
                          ef_range: tuple[float, float,int],
                          eta=1e-3,
