@@ -6,7 +6,7 @@ import wanntb
 
 path = 'GaAs-soc-001'
 
-datapath = os.path.join('..', 'tbdata')
+datapath = os.path.join('..', 'data')
 
 tbfile = os.path.join(datapath, path, 'wannier90_tb.dat')
 ssfile = os.path.join(datapath, path, 'wannier90_SS_R.dat')

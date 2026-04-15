@@ -10,7 +10,7 @@ kpath = np.array([[0.50, 0.00, 0.00],
                   [1.0/3.0, 1.0/3.0, 0.00],
                   [0.50, 0.00, 0.00]])
 
-npzfile = os.path.join('..', 'tbdata', path + '-tb.npz')
+npzfile = os.path.join('..', 'data', path + '-tb.npz')
 
 tb = wanntb.get_tbsystem_by_npz_file(npz_file=npzfile)
 

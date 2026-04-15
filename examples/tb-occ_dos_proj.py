@@ -6,7 +6,7 @@ import wanntb
 # MBT-sl2
 path = 'MBT-sl2-soc-af001'
 
-npzfile = os.path.join('..', 'tbdata', path + '-tb.npz')
+npzfile = os.path.join('..', 'data', path + '-tb.npz')
 
 tb = wanntb.get_tbsystem_by_npz_file(npz_file=npzfile)
 # print(tb.get_onsite_energy())
