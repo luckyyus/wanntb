@@ -126,11 +126,13 @@ class TBSystem:
                                                               self.atom_pos, self.atom_names, self.atom_counts,
                                                               is_soc=is_soc,
                                                               order=order)
+        # orbital positions may be different with atom positions
+        self.orb_pos = np.round(self.wann_centers_frac - self.orb_pos) + self.orb_pos
         self.orb_is_laxis = is_laxis
         self.n_orbs = self.orb_pos.shape[0]
         print('number of orbitals: %d' % self.n_orbs)
         assert self.n_orbs == self.num_wann, 'number of orbitals should be the same with the number of WFs.'
-
+        # print(self.orb_pos)
         print('orb_pos: %s %s' % (self.orb_pos.dtype, list(self.orb_pos.shape)))
         print('orb_lmsr: %s %s' % (self.orb_lmsr.dtype, list(self.orb_lmsr.shape)))
         if is_laxis:

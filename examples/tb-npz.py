@@ -4,15 +4,15 @@ import yaml
 import wanntb
 
 
-# path = 'MBT-sl3-soc-af001'
-path = 'MBT-sl2-soc-af001'
-# path = 'GaAs-soc-001'
+path = 'GaAs-soc-001'
 
-tbfile = os.path.join('tbdata', path, 'wannier90_tb.dat')
-ssfile = os.path.join('tbdata', path, 'wannier90_SS_R.dat')
-npzfile = os.path.join('tbdata', path+'-tb.npz')
-posfile = os.path.join('tbdata', path, 'POSCAR.vasp')
-orbfile = os.path.join('tbdata', path, 'projections.yml')
+datapath = os.path.join('..', 'tbdata')
+
+tbfile = os.path.join(datapath, path, 'wannier90_tb.dat')
+ssfile = os.path.join(datapath, path, 'wannier90_SS_R.dat')
+npzfile = os.path.join(datapath, path+'-tb.npz')
+posfile = os.path.join(datapath, path, 'POSCAR.vasp')
+orbfile = os.path.join(datapath, path, 'projections.yml')
 with open(orbfile, 'r', encoding='utf-8') as f:
     projections = yaml.safe_load(f)
 print(projections)

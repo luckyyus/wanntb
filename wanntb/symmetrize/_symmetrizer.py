@@ -36,9 +36,9 @@ class Symmetrizer:
             n_idx = len(idx_arr)
             self.orb_site_indices[i, :n_idx] = idx_arr
             self.orb_site_lens[i] = n_idx
-        print('orb_sites updated.')
         # print('orb_site_indices:')
         # print(self.orb_site_indices)
+        print('orb_sites updated.')
         self.R_vec_pool = None
         self.n_Rpts_pool = 0
         self.site_maps = None
@@ -93,7 +93,6 @@ class Symmetrizer:
         else:
             self.R_vec_pool = self._system.R_vec.copy()
         self.n_Rpts_pool = self.R_vec_pool.shape[0]
-        np.savetxt('R_vec_pool.txt', self.R_vec_pool, fmt='%4d')
 
     def symmetrize(self, tasks: str,
                    disable_list: List[int] | None = None,
@@ -119,8 +118,8 @@ class Symmetrizer:
 
         self._update_R_vec_pool(is_expand)
         print('R_vec_pool:', self.R_vec_pool.dtype, self.R_vec_pool.shape)
-        np.savetxt('R_vec_pool.txt', self.R_vec_pool, fmt='%4d')
-        np.savetxt('R_vec_orig.txt', self._system.R_vec, fmt='%4d')
+        # np.savetxt('R_vec_pool.txt', self.R_vec_pool, fmt='%4d')
+        # np.savetxt('R_vec_orig.txt', self._system.R_vec, fmt='%4d')
         print('time used: %24.2f <-- update R_vec_pool' % (datetime.now() - start).total_seconds())
 
         self._update_u_matrices()
@@ -322,7 +321,7 @@ def _u_matrices_site_par(real_lattice: NDArray,
     return u_matrices_arr
 
 
-# @njit(parallel=True, cache=True, nogil=True)
+@njit(parallel=True, cache=True, nogil=True)
 def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                      rotation, site_map, u_matrices, orb_site_indices, orb_site_lens, spin_flip_map,
                      is_soc_tr, is_tr_only):
@@ -633,7 +632,7 @@ def orbital_mapping(lattice: NDArray, orb_pos: NDArray, orb_lmsr: NDArray,
     return mapping
 
 
-# @njit(nogil=True)
+@njit(nogil=True)
 def site_mapping(lattice: NDArray, site_positions: NDArray,
                  rotation: NDArray, translation: NDArray) -> NDArray:
     nsites = site_positions.shape[0]
