@@ -6,10 +6,11 @@ import yaml
 
 '''
 Units used in the code:
+charge: e
 energy: eV
 time: ps 
-length: \AA
-1 T = 1e-8 V.ps.\AA^-2
+length: Å
+1 T = 1e-8 V.ps.Å^-2
 1 mu_B = 5.7883817982e-5 eV.T^-1
 1 h = 4.1356676969e-3 eV.ps 
 '''
@@ -52,12 +53,12 @@ Berry_Task = {
     'ahc':{
         'itask': 0,
         'columns' : ['sigma_x', 'sigma_y', 'sigma_z'],
-        'units_fermi': 'e^2/h/\AA'
+        'units_fermi': r'e^2/h/\AA'
     },
     'shc':{
         'itask': 10,
         'columns' : ['sigma_ab^x', 'sigma_ab^y', 'sigma_ab^z'],
-        'units_fermi': 'e^2/h/\AA(hbar/2e)'
+        'units_fermi': r'e^2/h/\AA(hbar/2e)'
     },
     'morb': {
         'itask': 20,
