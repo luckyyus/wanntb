@@ -1,5 +1,6 @@
 import numpy as np
 from numba import njit, prange
+
 from .constant import TwoPi, Hbar_, Mu_B_
 from .utility import fourier_phase_R_to_k, fourier_R_to_k, fourier_R_to_k_vec3, unitary_trans, occ_fermi, \
     unitary_trans_sub, inv_e_d_c

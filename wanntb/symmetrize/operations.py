@@ -4,9 +4,10 @@ This module provides utility functions for applying symmetry operations
 to positions, finding equivalent atoms, and coordinate transformations.
 """
 
-import numpy as np
 from datetime import datetime
 from typing import Tuple, List, Dict
+
+import numpy as np
 from numba import njit
 
 from ._rotate import rotation_to_axis_angle

@@ -1,7 +1,8 @@
-from math import pi
-import yaml
 import pkgutil
+from math import pi
+
 import numpy as np
+import yaml
 
 '''
 Units used in the code:

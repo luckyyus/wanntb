@@ -1,5 +1,6 @@
 import numpy as np
 from numba import njit, prange
+
 from .utility import fourier_phase_R_to_k, fourier_R_to_k, _ham_k_system, occ_fermi, dos_fermi
 
 

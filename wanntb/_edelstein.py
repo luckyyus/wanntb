@@ -1,7 +1,9 @@
 import numpy as np
 from numba import njit, prange
+
 from .utility import fourier_phase_R_to_k, fourier_R_to_k, fourier_R_to_k_vec3, unitary_trans, occ_fermi, \
-    unitary_trans_sub, inv_e_d_c, inv_e_d_2, get_delta_E, dos_fermi 
+    unitary_trans_sub, inv_e_d_c, inv_e_d_2, get_delta_E
+
 
 @njit(nogil=True)
 def _berry_vh_ssh_k_edelstein(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, ss_R, subwf):

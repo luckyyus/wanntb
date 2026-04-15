@@ -1,8 +1,8 @@
 from typing import Tuple
 
 import numpy as np
-from numpy.typing import NDArray
 from numba import njit
+from numpy.typing import NDArray
 
 from ..constant import S_, V2, EPS6, MAX_L, TwoPi
 from ..utility import normalize_vector

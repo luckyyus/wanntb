@@ -1,6 +1,7 @@
+from typing import List, Tuple, Dict
+
 import numpy as np
 from numpy.typing import NDArray
-from typing import List, Tuple, Dict
 
 from .constant import ORBITAL_NAME_FULL_SHELL, ORBITAL_NAME_TO_LM, EPS5, ORBITAL_NAME_MAP
 

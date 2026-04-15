@@ -2,7 +2,7 @@ from typing import Tuple, List
 
 import numpy as np
 
-from .constant import TwoPi, EPS5, EPS6
+from .constant import TwoPi, EPS5
 from .utility import hermiization_R
 
 

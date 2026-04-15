@@ -1,6 +1,7 @@
+from typing import Optional
+
 import numpy as np
 from numba import njit, prange
-from typing import Optional
 
 from .constant import TwoPi, EPS4, EPS5, EPS6, S_, Berry_Task
 

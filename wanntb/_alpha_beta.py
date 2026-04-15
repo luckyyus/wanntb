@@ -1,5 +1,6 @@
 import numpy as np
 from numba import njit, prange
+
 from .utility import A_n, _ham_k_da_system
 
 
