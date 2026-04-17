@@ -445,21 +445,22 @@ class TBSystem:
     
     def edelstein_calc_fermi(self, tasks: str,
                          kmesh: tuple[int, int, int],
-                         ef_range: tuple[float, float,int],
+                         ef_range: tuple[float, float, int],
                          eta=1e-3,
-                         eta_intra=1e-2,
+                         eta_intra=1e-3,
                          subwf=None):
         start = datetime.now()
         print('---------- start edelstein_calc_fermi ----------')
-        if self.ss_R is None :
-            print('spin data ss_R is missing.')
+        s_or_l = True if 's' in tasks else False
+        if s_or_l and self.ss_R is None :
+            print('Spin data ss_R is missing.')
             return
         kpts = kp.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         ef_min, ef_max, n_ef = ef_range[0], ef_range[1], ef_range[2]
         efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
-        inter_efs, intra_efs = edelstein_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
+        inter_efs, intra_efs = edelstein_fermi(s_or_l, self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
                                      self.num_wann, kpts, efs, eta, eta_intra,  ss_R=self._ss_R, subwf=subwf)
     
         # inter_efs /= self.volume

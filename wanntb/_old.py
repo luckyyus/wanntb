@@ -186,7 +186,7 @@ def _get_berrycurv_f_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpt, ef, eta, m
         f = occ_fermi(eig, ef, eta)
         of_k = _get_f_omega_interpolation(f, duu, num_wann)
     else: # mode == 0
-        eig, uu, Ah_ak, Ah_bk, _ = _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, subwf=subwf)
+        eig, uu, Ah_ak, Ah_bk, _ = _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, subwf_A=subwf)
         f = occ_fermi(eig, ef, eta)
         of_k = _get_f_omega(Ah_ak, Ah_bk, f, num_wann)
     return of_k, eig
