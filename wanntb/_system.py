@@ -542,6 +542,24 @@ class TBSystem:
         list_o_k = np.column_stack((efs, OHE / self.volume * 24300))
         return list_o_k  # unit is S/cm
 
+    def berry_calc_kplane(self, tasks: str, ef, kplane, axis, pos, eta=1e-4, xyz=2, subwf=None):
+        start = datetime.now()
+        print('---------- start berry_calc_kpath ----------')
+        itasks, begin_idx, count = ut.get_itasks(tasks)
+        print('itasks:', itasks)
+        print('begin_idx:', begin_idx)
+        if self.ss_R is None and 10 in itasks:
+            print('spin data ss_R is missing.')
+            return
+        kpts = kp.get_kpts_plane(kplane, axis, pos)
+        print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
+        out = berry_kpath(itasks, self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
+                          self.num_wann, kpts, ef, eta, xyz=xyz, ss_R=self.ss_R, subwf=subwf)
+        output = np.column_stack((kpts, out))
+        print('time used: %24.2f <-- berry_calc_kplane' % (datetime.now() - start).total_seconds())
+        return output
+
+
 def get_tbsystem_by_new_ham(tb_in: TBSystem, ham_R_new, r_mat_R_new, R_vec_new, ss_R_new=None):
     start = datetime.now()
     print('---------- start get_tbsystem_by_new_ham ----------')
