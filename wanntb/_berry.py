@@ -3,13 +3,46 @@ from numba import njit, prange
 
 from .constant import TwoPi, Hbar_, Mu_B_
 from .utility import fourier_phase_R_to_k, fourier_R_to_k, fourier_R_to_k_vec3, unitary_trans, occ_fermi, \
-    unitary_trans_sub, inv_e_d_c
+    unitary_trans_sub, inv_e_d_c, inv_e_d_2
 
-I_A = np.array([1, 2, 0], dtype=np.int32)
-I_B = np.array([2, 0, 1], dtype=np.int32)
+I_A = np.array([1, 2, 0], dtype=np.int16)
+I_B = np.array([2, 0, 1], dtype=np.int16)
+
 
 @njit(nogil=True)
-def _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, ss_R=None, subwf=None, subwf2=None):
+def _get_v_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, ss_R, subwf_S=None, subwf_A=None):
+    fac = fourier_phase_R_to_k(R_vec, kpt)
+    ham_out = fourier_R_to_k(ham_R, R_cartT, fac, iout=[1, 2, 3])
+    # A_bar^W_a[3, num_wann, num_wann] in units angst.
+    A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
+    eig, uu = np.linalg.eigh(ham_out[0])
+    inv_e_d, e_d = inv_e_d_c(eig, num_wann, eta)
+    inv_e_d2 = inv_e_d_2(eig, num_wann, eta)
+    Ah_k = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
+    q_k = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
+    vh = np.zeros((3, num_wann, num_wann), dtype=np.complex128)
+    if ss_R is not None:
+        sw = fourier_R_to_k_vec3(ss_R, fac)
+    for i in range(3):
+        Ah_k[i] = unitary_trans(A_bar_k[i], uu) + 1j * unitary_trans(ham_out[i + 1], uu) * inv_e_d
+        vh[i] = -1.0j * e_d * unitary_trans(A_bar_k[i], uu) + unitary_trans(ham_out[i + 1], uu)
+        if ss_R is not None: # for spin RE
+            # for subwf
+            mat_S = unitary_trans(sw[i], uu) if subwf_S is None \
+                else unitary_trans_sub(sw[i, subwf_S, :], uu[subwf_S, :], uu)
+            q_k[i] = mat_S if subwf_S is None else 0.5 * (mat_S + mat_S.T.conj())
+        else: # for orbit RE
+            if subwf_A is None:
+                q_k[i] = Ah_k[i]
+            else:
+                q_k[i] = (unitary_trans_sub(A_bar_k[i, subwf_A, :], uu[subwf_A, :], uu)
+                            + 1j * unitary_trans_sub(ham_out[i + 1, subwf_A, :], uu[subwf_A, :], uu) * inv_e_d)
+                q_k[i] = (q_k[i] + q_k[i].T.conj()) * 0.5
+    return eig, inv_e_d2, Ah_k, vh, q_k
+
+
+@njit(nogil=True)
+def _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, ss_R=None, subwf_A=None, subwf_S=None):
     fac = fourier_phase_R_to_k(R_vec, kpt)
     ham_out = fourier_R_to_k(ham_R, R_cartT, fac, iout=[1, 2, 3])
     # A_bar^W_a[3, num_wann, num_wann] in units angst.
@@ -26,21 +59,21 @@ def _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, ss_R=None
         # D^H_a = UU^dag.del_a UU (a=x,y,z) = {H_bar^H_mna / (e_n - e_m)}
         # A^H_a = A_bar^H_a + i D^H_a = i<psi_m| del_a psi_n>
         Ah_bk[i] = unitary_trans(A_bar_k[i], uu) + 1j * unitary_trans(ham_out[i + 1], uu) * inv_e_d
-        if subwf is None:
+        if subwf_A is None:
             Ah_ak[i] = Ah_bk[i]
         else:
-            Ah_ak[i] = (unitary_trans_sub(A_bar_k[i, subwf, :], uu[subwf, :], uu)
-                        + 1j * unitary_trans_sub(ham_out[i + 1, subwf, :], uu[subwf, :], uu) * inv_e_d)
+            Ah_ak[i] = (unitary_trans_sub(A_bar_k[i, subwf_A, :], uu[subwf_A, :], uu)
+                        + 1j * unitary_trans_sub(ham_out[i + 1, subwf_A, :], uu[subwf_A, :], uu) * inv_e_d)
             Ah_ak[i] = (Ah_ak[i] + Ah_ak[i].T.conj()) * 0.5
         if ss_R is not None:
-            mat_S = unitary_trans(sw[i], uu) if subwf2 is None \
-                else unitary_trans_sub(sw[i, subwf2, :], uu[subwf2, :], uu)
-            S_k[i] = mat_S if subwf2 is None else 0.5 * (mat_S + mat_S.T.conj())
+            mat_S = unitary_trans(sw[i], uu) if subwf_S is None \
+                else unitary_trans_sub(sw[i, subwf_S, :], uu[subwf_S, :], uu)
+            S_k[i] = mat_S if subwf_S is None else 0.5 * (mat_S + mat_S.T.conj())
     return eig, uu, Ah_ak, Ah_bk, S_k
 
 
 @njit(nogil=True)
-def _berry_Ah_k(itasks, ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, xyz, ss_R, subwf):
+def _berry_Ah_k(itasks, ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, xyz, ss_R, subwf=None):
     fac = fourier_phase_R_to_k(R_vec, kpt)
     ham_out = fourier_R_to_k(ham_R, R_cartT, fac, iout=[1, 2, 3])
     # A_bar^W_a[3, num_wann, num_wann] in units angst.
@@ -182,7 +215,7 @@ def berry_kpath(itasks, ham_R, r_mat_R, R_vec, R_cartT,
     for ik in prange(nkpts):
         kpt = kpts[ik]
         eig, _, Ah_bk, Ah_ak, js = _berry_Ah_k(itasks, ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, xyz, ss_R,
-                                            subwf)
+                                            subwf=subwf)
 
         f = occ_fermi(eig, ef, eta)
         if 0 in itasks:
@@ -236,7 +269,7 @@ def berry_fermi(itasks, ham_R, r_mat_R, R_vec, R_cartT,
     for ik in prange(nkpts):
         kpt = kpts[ik]
         eig, _, Ah_ak, Ah_bk, js_ak = _berry_Ah_k(itasks, ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, xyz, ss_R,
-                                               subwf)
+                                               subwf=subwf)
         for i in range(n_ef):
             ef = efs[i]
             f = occ_fermi(eig, ef, eta)
@@ -279,7 +312,7 @@ def intra_shc_fermi(ham_R, r_mat_R, R_vec, R_cartT, ss_R, num_wann, kpts, efs, e
     for ik in prange(nkpts):
         kpt = kpts[ik]
         eig, uu, Ah_a, Ah_b, _S = _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt,
-                                                ss_R=ss_R, subwf=None, subwf2=subwf)
+                                                 ss_R=ss_R, subwf_A=None, subwf_S=subwf)
 
         for i in range(n_ef):
             ef = efs[i]
@@ -472,27 +505,18 @@ def axion_fermi(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpts, efs, eta, mode, 
 
     for ik in prange(nkpts):
         kpt = kpts[ik]
-        eig, uu, Ah_ak, Ah_bk, _ = _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann,eta, kpt, subwf=subwf)
+        eig, uu, Ah_ak, Ah_bk, _ = _get_Ah_ab_S_k(ham_R, r_mat_R, R_vec, R_cartT, num_wann, eta, kpt, subwf_A=subwf)
         # Ah_ak and Ah_bk are hermitian operators
         for i in range(n_ef):
             ef = efs[i]
             f = occ_fermi(eig, ef, eta)
-            if mode == 0:
+            if mode == 0: # matmul
                 og_mat = _get_omega_gmat(Ah_bk, Ah_bk, f, num_wann)
-                # p_dot_Ah = (Ah_ak[2] + Ah_ak[2].T.conj()) * 0.5
                 theta_k = np.sum(np.diag(Ah_ak[2] @ og_mat[2]).real * f)
                 results_ef[i, ik] = theta_k
-            elif mode == 1:
-                og_mat = _get_omega_gmat(Ah_ak, Ah_bk, f, num_wann)
-                theta_k = np.sum(np.diag(Ah_bk[2] @ og_mat[2]).real * f)
-                results_ef[i, ik] = theta_k
-            elif mode == 2:
+            elif mode == 1: # diag-product
                 og = _get_f_omega(Ah_bk, Ah_bk, f, num_wann)
                 theta_k = np.sum(np.diag(Ah_ak[2]).real * og[2])
-                results_ef[i, ik] = theta_k
-            elif mode == 3:
-                og = _get_f_omega(Ah_ak, Ah_bk, f, num_wann)
-                theta_k = np.sum(np.diag(Ah_bk[2]).real * og[2])
                 results_ef[i, ik] = theta_k
             else:
                 og_mat = _get_omega_gmat(Ah_bk, Ah_bk, f, num_wann)
@@ -500,4 +524,7 @@ def axion_fermi(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpts, efs, eta, mode, 
                 results_ef[i, ik] = theta_k
 
     # 归一化：结果实部除以 (2pi * nkpts) 结果为 以 2pi为单位值
-    return np.sum(results_ef, axis=1) / (TwoPi * nkpts)
+    return np.sum(results_ef, axis=1) * TwoPi * 5.0/ (24.0 * nkpts)
+
+
+

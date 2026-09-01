@@ -277,12 +277,6 @@ def get_eig_for_kpts_kpar(ham_R, R_vec, R_cartT, num_wann, kpts):
     return eigs
 
 
-@njit('float64(float64, float64, float64)', nogil=True)
-def A_n(eig_n, ef, eta):
-    de = eig_n - ef
-    return eta / (de * de + eta * eta / 4)
-
-
 @njit(nogil=True)
 def A_vec(eig, ef, eta):
     de = eig - ef
@@ -302,10 +296,6 @@ def dos_fermi(eig, ef, eta):
     fac = (eig - ef) / eta
     return 1.0 / (np.exp(fac) + 1) / (1 + np.exp(-fac)) / eta
 
-@njit(nogil=True)
-def get_delta_E(eig, ef, eta):
-    de = eig - ef
-    return  eta / (de * de + eta * eta / 4) / TwoPi
 
 @njit(nogil=True)
 def spin_w(gamma, num_wann, udud_order=False):
@@ -352,13 +342,13 @@ def inv_e_d_2(eig, num_wann, eta=1e-6):
     """
     inv_e_d_2[m, n] = 1 / ((e_n - e_m)^2 + eta^2))
     """
-    inv_e_d_2 = np.zeros((num_wann, num_wann), dtype=np.float64)
+    inv2 = np.zeros((num_wann, num_wann), dtype=np.float64)
     e_d = np.zeros((num_wann, num_wann), dtype=np.float64)
     for m_ in range(num_wann):
         for n_ in range(num_wann):
             e_d[m_, n_] = eig[n_] - eig[m_]
-            inv_e_d_2[m_, n_] = 1.0 / (e_d[m_, n_] * e_d[m_, n_] + eta * eta) # if abs(e_d) > 1e-8 else 0.0
-    return inv_e_d_2
+            inv2[m_, n_] = 1.0 / (e_d[m_, n_] * e_d[m_, n_] + eta * eta) # if abs(e_d) > 1e-8 else 0.0
+    return inv2
 
 
 # @njit(parallel=True)

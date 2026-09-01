@@ -53,3 +53,53 @@ def get_adpt_kpts(dk, adpt_mesh):
 
     kpts = np.column_stack((k1.ravel(), k2.ravel(), k3.ravel())) * dk
     return kpts
+
+
+def get_kpts_plane(kplane, axis='z', pos=0.0):
+    """
+    生成固定 x、y 或 z 的平面 k 点网格
+
+    参数：
+    - kplane: (Nx, Ny) 或 (Ny, Nz) 等，网格大小
+    - axis: 固定的轴 'x', 'y', 'z'
+    - pos: 固定平面的坐标值
+
+    返回：
+    - kpts: N x 3 的 k 点数组
+    """
+    Nx, Ny = kplane
+
+    # 根据固定轴选择网格生成方式
+    if axis == 'x':
+        ky, kz = np.meshgrid(
+            np.arange(Nx, dtype=float) / Nx,
+            np.arange(Ny, dtype=float) / Ny,
+            indexing='ij'
+        )
+        ky -= 0.5
+        kz -= 0.5
+        kx = np.full_like(ky, pos)
+    elif axis == 'y':
+        kx, kz = np.meshgrid(
+            np.arange(Nx, dtype=float) / Nx,
+            np.arange(Ny, dtype=float) / Ny,
+            indexing='ij'
+        )
+        kx -= 0.5
+        kz -= 0.5
+        ky = np.full_like(kx, pos)
+    elif axis == 'z':
+        kx, ky = np.meshgrid(
+            np.arange(Nx, dtype=float) / Nx,
+            np.arange(Ny, dtype=float) / Ny,
+            indexing='ij'
+        )
+        kx -= 0.5
+        ky -= 0.5
+        kz = np.full_like(kx, pos)
+    else:
+        raise ValueError("axis must be 'x', 'y', or 'z'")
+
+    # N x 3 数组
+    kpts = np.column_stack((kx.ravel(), ky.ravel(), kz.ravel()))
+    return kpts

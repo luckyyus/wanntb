@@ -1,7 +1,7 @@
 import numpy as np
 from numba import njit, prange
 
-from .utility import A_n, _ham_k_da_system
+from .utility import A_vec, _ham_k_da_system
 
 
 @njit(nogil=True)
@@ -13,22 +13,22 @@ def _get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q, num_wann: int
     alpha_k_n = np.zeros(num_wann, dtype=np.float64)
     alpha_qvd_k_n = np.zeros(num_wann, dtype=np.float64)
     qvs_k_n = np.zeros(num_wann, dtype=np.float64)
+    _A = A_vec(eig, ef, eta)
+    _Aq = A_vec(eig_q, ef, eta)
     for n_ in prange(num_wann):
         if abs(eig[n_] - ef) > eta * 16.0:
             continue
         # un_up = np.ascontiguousarray(uu[0:half, n_])
         un_dn = np.ascontiguousarray(uu[half:num_wann, n_])
         # sz = np.dot(un_up.conj(), un_up).real - np.dot(un_dn.conj(), un_dn).real
-        An = A_n(eig[n_], ef, eta)
         alpha_k_n[:] = 0.0
         alpha_qvd_k_n[:] = 0.0
         qvs_k_n[:] = 0.0
         for m_ in prange(num_wann):
             um_up = np.ascontiguousarray(uu_q[0:half, m_])
             sp2_q = abs(np.dot(um_up.conj(), un_dn * e_s))**2
-            Am = A_n(eig_q[m_], ef, eta)
             # ww in units eV^-2
-            ww = An * Am
+            ww = _A[n_] * _Aq[m_]
             # alpha_k in units 1
             alpha_k_n[m_] = sp2_q * ww
             # qvd in units eV angst.
@@ -37,10 +37,10 @@ def _get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q, num_wann: int
             if n_ != m_:
                 d_eig_mn = eig_q[m_] - eig[n_]
                 if abs(d_eig_mn) < 1E-7:
-                    qvs_k_n[m_] = - sp2_q * ((eig_q_da[m_] * Am - eig_da[n_] * An)
+                    qvs_k_n[m_] = - sp2_q * ((eig_q_da[m_] * _Aq[m_] - eig_da[n_] * _A[n_])
                                              / (d_eig_mn - 1E-7j)).real
                 else:
-                    qvs_k_n[m_] = - sp2_q * ((eig_q_da[m_] * Am - eig_da[n_] * An)
+                    qvs_k_n[m_] = - sp2_q * ((eig_q_da[m_] * _Aq[m_] - eig_da[n_] * _A[n_])
                                          / d_eig_mn)
             else:
                 # qvs_k_n[m_] = eta * q * ww * eig_da[n_] * eig_da[n_] * sz
@@ -49,10 +49,10 @@ def _get_alpha_beta_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q, num_wann: int
                 #             = - sp2_q * (1 + q * eig_dda[n_]/eig_da[n_] -1) * An / q
                 #             = - sp2_q * (eig_dda[n_]/eig_da[n_]) * An
                 if abs(eig_da[n_] * q) < 1E-7:
-                    qvs_k_n[m_] = - sp2_q * ((eig_q_da[n_] * Am - eig_da[n_] * An)
+                    qvs_k_n[m_] = - sp2_q * ((eig_q_da[n_] * _Aq[m_] - eig_da[n_] * _A[n_])
                                              / ( q * eig_da[n_] - 1E-7j)).real
                 else:
-                    qvs_k_n[m_] = - sp2_q * (eig_q_da[n_] / eig_da[n_] * Am - An) / q
+                    qvs_k_n[m_] = - sp2_q * (eig_q_da[n_] / eig_da[n_] * _Aq[m_] - _A[n_]) / q
         alpha_k[n_] = np.sum(alpha_k_n)
         alpha_qvd_k[n_] = np.sum(alpha_qvd_k_n)
         qvs_k[n_] = np.sum(qvs_k_n)
@@ -68,13 +68,14 @@ def _get_alpha_beta_inter_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q, num_wan
     alpha_k_n = np.zeros(num_wann, dtype=np.float64)
     alpha_qvd_k_n = np.zeros(num_wann, dtype=np.float64)
     qvs_k_n = np.zeros(num_wann, dtype=np.float64)
+    _A = A_vec(eig, ef, eta)
+    _Aq = A_vec(eig_q, ef, eta)
     for n_ in prange(num_wann):
         if abs(eig[n_] - ef) > eta * 16.0:
             continue
         # un_up = np.ascontiguousarray(uu[0:half, n_])
         un_dn = np.ascontiguousarray(uu[half:num_wann, n_])
         # sz = np.dot(un_up.conj(), un_up).real - np.dot(un_dn.conj(), un_dn).real
-        An = A_n(eig[n_], ef, eta)
         alpha_k_n[:] = 0.0
         alpha_qvd_k_n[:] = 0.0
         qvs_k_n[:] = 0.0
@@ -83,9 +84,8 @@ def _get_alpha_beta_inter_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q, num_wan
                 continue
             um_up = np.ascontiguousarray(uu_q[0:half, m_])
             sp2_q = abs(np.dot(um_up.conj(), un_dn * e_s)) ** 2
-            Am = A_n(eig_q[m_], ef, eta)
             # ww in units eV^-2
-            ww = An * Am
+            ww = _A[n_] * _Aq[m_]
             # alpha_k in units 1
             alpha_k_n[m_] = sp2_q * ww
             # qvd in units eV angst.
@@ -93,10 +93,10 @@ def _get_alpha_beta_inter_k(eig, eig_q, eig_da, eig_q_da, e_s, uu, uu_q, num_wan
             # qvs in units eV angst.
             d_eig_mn = eig_q[m_] - eig[n_]
             if abs(d_eig_mn) < 1E-7:
-                qvs_k_n[m_] = - sp2_q * ((eig_q_da[m_] * Am - eig_da[n_] * An)
+                qvs_k_n[m_] = - sp2_q * ((eig_q_da[m_] * _Aq[m_] - eig_da[n_] * _A[n_])
                                          / (d_eig_mn - 1E-7j)).real
             else:
-                qvs_k_n[m_] = - sp2_q * ((eig_q_da[m_] * Am - eig_da[n_] * An)
+                qvs_k_n[m_] = - sp2_q * ((eig_q_da[m_] * _Aq[m_] - eig_da[n_] * _A[n_])
                                          / d_eig_mn)
 
         alpha_k[n_] = np.sum(alpha_k_n)

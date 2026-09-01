@@ -445,21 +445,22 @@ class TBSystem:
     
     def edelstein_calc_fermi(self, tasks: str,
                          kmesh: tuple[int, int, int],
-                         ef_range: tuple[float, float,int],
+                         ef_range: tuple[float, float, int],
                          eta=1e-3,
-                         eta_intra=1e-2,
+                         eta_intra=1e-3,
                          subwf=None):
         start = datetime.now()
         print('---------- start edelstein_calc_fermi ----------')
-        if self.ss_R is None :
-            print('spin data ss_R is missing.')
+        s_or_l = True if 's' in tasks else False
+        if s_or_l and self.ss_R is None :
+            print('Spin data ss_R is missing.')
             return
         kpts = kp.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         ef_min, ef_max, n_ef = ef_range[0], ef_range[1], ef_range[2]
         efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
-        inter_efs, intra_efs = edelstein_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
+        inter_efs, intra_efs = edelstein_fermi(s_or_l, self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
                                      self.num_wann, kpts, efs, eta, eta_intra,  ss_R=self._ss_R, subwf=subwf)
     
         # inter_efs /= self.volume
@@ -540,6 +541,24 @@ class TBSystem:
 
         list_o_k = np.column_stack((efs, OHE / self.volume * 24300))
         return list_o_k  # unit is S/cm
+
+    def berry_calc_kplane(self, tasks: str, ef, kplane, axis, pos, eta=1e-4, xyz=2, subwf=None):
+        start = datetime.now()
+        print('---------- start berry_calc_kpath ----------')
+        itasks, begin_idx, count = ut.get_itasks(tasks)
+        print('itasks:', itasks)
+        print('begin_idx:', begin_idx)
+        if self.ss_R is None and 10 in itasks:
+            print('spin data ss_R is missing.')
+            return
+        kpts = kp.get_kpts_plane(kplane, axis, pos)
+        print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
+        out = berry_kpath(itasks, self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
+                          self.num_wann, kpts, ef, eta, xyz=xyz, ss_R=self.ss_R, subwf=subwf)
+        output = np.column_stack((kpts, out))
+        print('time used: %24.2f <-- berry_calc_kplane' % (datetime.now() - start).total_seconds())
+        return output
+
 
 def get_tbsystem_by_new_ham(tb_in: TBSystem, ham_R_new, r_mat_R_new, R_vec_new, ss_R_new=None):
     start = datetime.now()
