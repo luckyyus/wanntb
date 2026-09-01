@@ -563,11 +563,11 @@ def get_tbsystem_by_new_ham(tb_in: TBSystem, ham_R_new, r_mat_R_new, R_vec_new, 
     else:
         if n_Rpts_new == tb_in.n_Rpts: tb.r_mat_R = tb_in.r_mat_R.copy()
     assert tb.r_mat_R is not None, 'new r_mat_R is missing'
-    print('r_mat_R: %s %s' % (tb.r_mat_R.dtype, list(tb.r_mat_R.shape)))
+    print(f'r_mat_R: {tb.r_mat_R.dtype} {list(tb.r_mat_R.shape)}')
 
     if ss_R_new is not None:
         tb.ss_R = ss_R_new
-        print('ss_R: %s %s' % (tb.ss_R.dtype, list(tb.ss_R.shape)))
+        print(f'ss_R: {tb.ss_R.dtype} {list(tb.ss_R.shape)}')
     if tb_in.atom_pos is not None:
         tb.atom_pos = tb_in.atom_pos.copy()
         tb.atom_names = tb_in.atom_names.copy()

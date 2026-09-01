@@ -150,6 +150,10 @@ class Symmetrizer:
             if not self._operations.is_enabled[isym]: continue
             print('operator %d is enabled.' % isym)
             rotation, translation, time_reversal = self._operations[isym]
+            axis_angle = self._operations.axis_angles[isym]
+            axis = axis_angle['axis']
+            angle = axis_angle['angle']
+            is_inv = axis_angle['is_inv']
             u_matrices = self.u_matrices_list[isym]
             site_map = self.site_maps[isym]
 
@@ -171,11 +175,15 @@ class Symmetrizer:
             if l_rmat:
                 args1 = [r_mat_orig] + args
                 r_mats[idx_enable] = _rotate3_site_par(*args1)
+                if is_inv:
+                    r_mats[idx_enable] *= -1.0
                 print('time used: %24.2f <-- rotate r_matrices for symmetric operator No. %d finished' %
                       ((datetime.now() - start).total_seconds(), isym))
             if l_ss:
                 args2 = [ss_orig] + args
                 s_mats[idx_enable] = _rotate3_site_par(*args2)
+                if time_reversal:
+                    s_mats[idx_enable] *= -1.0
                 print('time used: %24.2f <-- rotate spin matrices for symmetric operator No. %d finished' %
                       ((datetime.now() - start).total_seconds(), isym))
             idx_enable += 1
