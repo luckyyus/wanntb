@@ -174,16 +174,46 @@ class Symmetrizer:
                       ((datetime.now() - start).total_seconds(), isym))
             if l_rmat:
                 args1 = [r_mat_orig] + args
-                r_mats[idx_enable] = _rotate3_site_par(*args1)
-                if is_inv:
-                    r_mats[idx_enable] *= -1.0
+                # Position is a polar vector: r' = R_cart r.
+                rot_cart = rotation_in_cart(rotation, self._system.real_lattice)
+                r_mats[idx_enable] = _rotate3_site_par(*args1, rot_cart)
+                # The position operator is affine under {R|t}.  Because the
+                # mapped source site is brought back to the reference cell,
+                # the overlap term for site a is (t - v_a) in Cartesian
+                # coordinates, not one global t for every site.
+                ir_zero = find_R_vec(
+                    np.zeros(3, dtype=self.R_vec_pool.dtype),
+                    self.R_vec_pool
+                )
+                if ir_zero >= 0:
+                    translation_cart = translation @ self._system.real_lattice
+                    for a in range(self.n_orb_sites):
+                        a_tgt = site_map[a, 0]
+                        if a_tgt < 0:
+                            continue
+                        cell_shift_cart = (
+                            site_map[a, 1:] @ self._system.real_lattice
+                        )
+                        affine_shift = translation_cart - cell_shift_cart
+                        idx_tgt = self.orb_site_indices[
+                            a_tgt, :self.orb_site_lens[a_tgt]
+                        ]
+                        for idx in idx_tgt:
+                            for alpha in range(3):
+                                r_mats[
+                                    idx_enable, ir_zero, alpha, idx, idx
+                                ] += affine_shift[alpha]
                 print('time used: %24.2f <-- rotate r_matrices for symmetric operator No. %d finished' %
                       ((datetime.now() - start).total_seconds(), isym))
             if l_ss:
                 args2 = [ss_orig] + args
-                s_mats[idx_enable] = _rotate3_site_par(*args2)
-                if time_reversal:
-                    s_mats[idx_enable] *= -1.0
+                # Spin is an axial vector.  It gets det(R) R under a
+                # spatial operation and an additional minus sign under T.
+                rot_cart = rotation_in_cart(rotation, self._system.real_lattice)
+                spin_transform = np.linalg.det(rot_cart) * rot_cart
+                if time_reversal == 1:
+                    spin_transform *= -1.0
+                s_mats[idx_enable] = _rotate3_site_par(*args2, spin_transform)
                 print('time used: %24.2f <-- rotate spin matrices for symmetric operator No. %d finished' %
                       ((datetime.now() - start).total_seconds(), isym))
             idx_enable += 1
@@ -418,7 +448,7 @@ def _rotate_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
 @njit(parallel=True, cache=True, nogil=True)
 def _rotate3_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                      rotation, site_map, u_matrices, orb_site_indices, orb_site_lens, spin_flip_map,
-                     is_soc_tr, is_tr_only):
+                     is_soc_tr, is_tr_only, component_transform):
     """
     Numba optimized rotation kernel.
     """
@@ -458,22 +488,31 @@ def _rotate3_site_par(oo_R, num_wann: int, R_vec_pool, n_Rpts_pool: int,
                 ir_tgt = find_R_vec(rv_eff, R_vec_pool)
                 if ir_tgt < 0: continue
 
-                for i in range(3):
+                # First transform each source component in Wannier space,
+                # then mix Cartesian components with D_{alpha,beta}.
+                oo_rot_components = np.zeros((3, n_a, n_b), dtype=np.complex128)
+                for beta in range(3):
                     oo_block = np.zeros((n_a, n_b), dtype=np.complex128)
 
                     for i_a in range(n_a):
                         for j_b in range(n_b):
-                            oo_block[i_a, j_b] = oo_R[ir, i, idx_a[i_a], idx_b[j_b]]
+                            oo_block[i_a, j_b] = oo_R[ir, beta, idx_a[i_a], idx_b[j_b]]
 
                     if is_soc_tr:
                         oo_block = _apply_soc_tr(oo_block, idx_a, idx_b, spin_flip_map)
                     elif is_tr_only:
                         oo_block = np.conj(oo_block)
-                    oo_rot = U_a @ np.ascontiguousarray(oo_block) @ U_b_H
+                    oo_rot_components[beta] = U_a @ np.ascontiguousarray(oo_block) @ U_b_H
 
-                    for i_a in range(n_a):
-                        for j_b in range(n_b):
-                            oo_out[ir_tgt, i, idx_a_tgt[i_a], idx_b_tgt[j_b]] = oo_rot[i_a, j_b]
+                for alpha in range(3):
+                    for beta in range(3):
+                        factor = component_transform[alpha, beta]
+                        if np.abs(factor) < 1.0e-14:
+                            continue
+                        for i_a in range(n_a):
+                            for j_b in range(n_b):
+                                oo_out[ir_tgt, alpha, idx_a_tgt[i_a], idx_b_tgt[j_b]] += \
+                                    factor * oo_rot_components[beta, i_a, j_b]
     return oo_out
 
 
