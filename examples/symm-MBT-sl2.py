@@ -20,7 +20,7 @@ tb.output_bands_kpath(kpath, nkpts_path=100, filename=path + '-bands-orig.txt')
 symm = sym.Symmetrizer(tb, magmom_str='0 0 5 0 0 -5 36*0', is_soc=True)
 
 
-ham_out, r_mat_out, ss_out, r_vec = symm.symmetrize('h',
+ham_out, r_mat_out, ss_out, r_vec = symm.symmetrize('has',
                                                     # enable_list=[1],
                                                     is_expand=True)
 
