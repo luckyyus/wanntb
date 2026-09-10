@@ -1,0 +1,177 @@
+diff --git a/src/parameters.F90 b/src/parameters.F90
+index 49a071b..3e6653f 100644
+--- a/src/parameters.F90
++++ b/src/parameters.F90
+@@ -34,6 +34,8 @@ module w90_parameters
+   !! Read the wvfn from fortran formatted file
+   logical, public, save :: spn_formatted
+   !! Read the spin from fortran formatted file
++  logical, public, save :: write_ss_r
++  !! Write the real-space spin matrices to seedname_SS_R.dat
+   logical, public, save :: uHu_formatted
+   logical, public, save :: berry_uHu_formatted
+   !! Read the uHu from fortran formatted file
+@@ -631,6 +633,9 @@ contains
+     spn_formatted = .false.       ! formatted or "binary" file
+     call param_get_keyword('spn_formatted', found, l_value=spn_formatted)
+ 
++    write_ss_r = .false.
++    call param_get_keyword('write_ss_r', found, l_value=write_ss_r)
++
+     uHu_formatted = .false.       ! formatted or "binary" file
+     call param_get_keyword('uhu_formatted', found, l_value=uHu_formatted)
+ 
+@@ -3142,6 +3147,8 @@ contains
+     write (stdout, '(1x,a78)') '*-------------------------------- POSTW90 -----------------------------------*'
+     write (stdout, '(1x,a46,10x,I8,13x,a1)') '|  Number of Wannier Functions               :', num_wann, '|'
+     write (stdout, '(1x,a46,10x,I8,13x,a1)') '|  Number of electrons per state             :', num_elec_per_state, '|'
++    if (write_ss_r .or. iprint > 2) &
++      write (stdout, '(1x,a46,10x,L8,13x,a1)') '|  Write SS_R matrices to file               :', write_ss_r, '|'
+     if (abs(scissors_shift) > 1.0e-7_dp .or. iprint > 0) then
+       write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Scissor shift applied to conduction bands :', scissors_shift, '|'
+       if (num_valence_bands > 0) then
+@@ -6187,6 +6194,7 @@ contains
+     call comms_bcast(length_unit, 1)
+     call comms_bcast(wvfn_formatted, 1)
+     call comms_bcast(spn_formatted, 1)
++    call comms_bcast(write_ss_r, 1)
+     call comms_bcast(uHu_formatted, 1)
+     call comms_bcast(berry_uHu_formatted, 1)
+     call comms_bcast(spin, 1)
+diff --git a/src/postw90/get_oper.F90 b/src/postw90/get_oper.F90
+index 8230135..6782bfe 100644
+--- a/src/postw90/get_oper.F90
++++ b/src/postw90/get_oper.F90
+@@ -956,22 +956,26 @@ contains
+     !
+     !================================================================
+ 
+-    use w90_constants, only: dp, pi, cmplx_0
+-    use w90_parameters, only: num_wann, ndimwin, num_kpts, num_bands, &
+-      timing_level, have_disentangled, spn_formatted
+-    use w90_postw90_common, only: nrpts, v_matrix
++    use w90_constants, only: dp, pi, twopi, cmplx_0, cmplx_i
++    use w90_parameters, only: num_wann, ndimwin, num_kpts, kpt_latt, num_bands, &
++      timing_level, have_disentangled, spn_formatted, write_ss_r, &
++      m_matrix, wb, bk, nntot
++    use w90_postw90_common, only: nrpts, v_matrix, irvec, ndegen
+     use w90_io, only: io_error, io_stopwatch, stdout, seedname, &
+-      io_file_unit
++      io_date, io_file_unit
+     use w90_comms, only: on_root, comms_bcast
+ 
+     implicit none
+ 
+     complex(kind=dp), allocatable :: spn_o(:, :, :, :), SS_q(:, :, :, :), spn_temp(:, :)
+-    real(kind=dp)                 :: s_real, s_img
++    real(kind=dp)                 :: s_real, s_img, rdotk
+     integer, allocatable          :: num_states(:)
+-    integer                       :: i, j, ii, jj, m, n, spn_in, ik, is, &
+-                                     winmin, nb_tmp, nkp_tmp, ierr, s, counter
++    integer                       :: i, j, irpt, ii, jj, m, n, spn_in, ik, is, &
++                                     nn, idir, winmin, nb_tmp, nkp_tmp, ierr, &
++                                     s, counter, file_unit, ir
+     character(len=60)             :: header
++    character(len=9)              :: cdate, ctime
++    complex(kind=dp)              :: fac, pos_r(3)
+ 
+     if (timing_level > 1 .and. on_root) call io_stopwatch('get_oper: get_SS_R', 1)
+ 
+@@ -1077,6 +1081,63 @@ contains
+       call fourier_q_to_R(SS_q(:, :, :, 2), SS_R(:, :, :, 2))
+       call fourier_q_to_R(SS_q(:, :, :, 3), SS_R(:, :, :, 3))
+ 
++      ! Write SS_R to file only when explicitly requested in the input file
++      if (write_ss_r) then
++        file_unit = io_file_unit()
++        open (unit=file_unit, file=trim(seedname)//'_SS_R.dat', &
++              form='formatted', status='unknown', iostat=ierr)
++        if (ierr /= 0) then
++          write (stdout, *) 'Error opening file '//trim(seedname)//'_SS_R.dat'
++          call io_error('Failed to open output file')
++        end if
++
++        call io_date(cdate, ctime)
++        header = 'written on '//cdate//' at '//ctime
++        write (file_unit, *) header
++        write (file_unit, *) num_wann
++        write (file_unit, *) nrpts
++        write (file_unit, '(15I4)') (ndegen(i), i=1, nrpts)
++
++        ! Write the three components of SS_R
++        do ir = 1, nrpts
++          write (file_unit, '(/,3I4)') irvec(:, ir)
++          do i = 1, num_wann
++            do j = 1, num_wann
++              write (file_unit, '(2I4,3x,6(E16.9,1x))') j, i, &
++                (real(SS_R(j, i, ir, is)), aimag(SS_R(j, i, ir, is)), is=1, 3)
++            end do
++          end do
++        end do
++
++        ! Write <0n|r|Rm>, preserving the existing SS_R.dat layout
++        do irpt = 1, nrpts
++          write (file_unit, '(/,3I4)') irvec(:, irpt)
++          do i = 1, num_wann
++            do j = 1, num_wann
++              pos_r(:) = 0.0_dp
++              do ik = 1, num_kpts
++                rdotk = twopi*dot_product(kpt_latt(:, ik), real(irvec(:, irpt), dp))
++                fac = exp(-cmplx_i*rdotk)/real(num_kpts, dp)
++                do idir = 1, 3
++                  do nn = 1, nntot
++                    if (i == j) then
++                      pos_r(idir) = pos_r(idir) - &
++                        wb(nn)*bk(idir, nn, ik)* &
++                        aimag(log(m_matrix(i, i, nn, ik)))*fac
++                    else
++                      pos_r(idir) = pos_r(idir) + cmplx_i*wb(nn)* &
++                        bk(idir, nn, ik)*m_matrix(j, i, nn, ik)*fac
++                    end if
++                  end do
++                end do
++              end do
++              write (file_unit, '(2I4,3x,6(E15.8,1x))') j, i, pos_r(:)
++            end do
++          end do
++        end do
++        close (file_unit)
++      end if
++
+     endif !on_root
+ 
+     call comms_bcast(SS_R(1, 1, 1, 1), num_wann*num_wann*nrpts*3)
+diff --git a/src/postw90/postw90.F90 b/src/postw90/postw90.F90
+index f3102b6..9368f32 100644
+--- a/src/postw90/postw90.F90
++++ b/src/postw90/postw90.F90
+@@ -22,6 +22,7 @@ program postw90
+   use w90_comms, only: on_root, num_nodes, comms_setup, comms_end, comms_bcast, comms_barrier
+   use w90_postw90_common, only: pw90common_wanint_setup, pw90common_wanint_get_kpoint_file, &
+     pw90common_wanint_param_dist, pw90common_wanint_data_dist
++  use w90_get_oper, only: get_SS_R
+ 
+   ! These modules deal with the interpolation of specific physical properties
+   !
+@@ -185,6 +186,9 @@ program postw90
+   !
+   ! Now perform one or more of the following tasks
+ 
++  ! Generate the real-space spin-matrix file as a standalone task.
++  if (write_ss_r) call get_SS_R
++
+   ! ---------------------------------------------------------------
+   ! Density of states calculated using a uniform interpolation mesh
+   ! ---------------------------------------------------------------
+diff --git a/src/postw90/postw90_common.F90 b/src/postw90/postw90_common.F90
+index 0393624..4f5b837 100644
+--- a/src/postw90/postw90_common.F90
++++ b/src/postw90/postw90_common.F90
+@@ -286,6 +286,7 @@ contains
+     call comms_bcast(gyrotropic_smr_index, 1)
+ 
+     call comms_bcast(spinors, 1)
++    call comms_bcast(write_ss_r, 1)
+ 
+     call comms_bcast(shc_freq_scan, 1)
+     call comms_bcast(shc_alpha, 1)
