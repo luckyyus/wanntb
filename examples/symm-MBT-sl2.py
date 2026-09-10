@@ -26,4 +26,6 @@ ham_out, r_mat_out, ss_out, r_vec = symm.symmetrize('has',
 
 tb_new = wtb.get_tbsystem_by_new_ham(tb, ham_out, r_mat_out, r_vec, ss_R_new=ss_out)
 
+# tb_new.output_npz(seedname='path' + '-tb-symm.npz')
+
 tb_new.output_bands_kpath(kpath, nkpts_path=100, filename=path + '-bands-symm.txt')
