@@ -377,7 +377,8 @@ def get_morb_mat(ef, ham_R, r_mat_R, R_vec, _R_cartT, num_wann, kpt):
     ham_out = fourier_R_to_k(ham_R, _R_cartT, fac, iout=[1, 2, 3])
     A_bar_k = fourier_R_to_k_vec3(r_mat_R, fac)
     eig, uu = np.linalg.eigh(ham_out[0])
-    e_d = inv_e_d = np.zeros((num_wann, num_wann), dtype=np.float64)
+    e_d = np.zeros((num_wann, num_wann), dtype=np.float64)
+    inv_e_d = np.zeros((num_wann, num_wann), dtype=np.float64)
     f = occ_fermi(eig, ef, eta=1e-8)
     g = np.diag((1 - f)).astype(np.complex128)
     for m_ in range(num_wann):
@@ -525,6 +526,5 @@ def axion_fermi(ham_R, r_mat_R, R_vec, R_cartT, num_wann, kpts, efs, eta, mode, 
 
     # 归一化：结果实部除以 (2pi * nkpts) 结果为 以 2pi为单位值
     return np.sum(results_ef, axis=1) * TwoPi * 5.0/ (24.0 * nkpts)
-
 
 
