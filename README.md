@@ -109,8 +109,8 @@ ef_range = (e_min, e_max, n_ef)
 tb.berry_calc_fermi('ahc+shc+morb', kmesh, ef_range, eta=1e-4, xyz=2, subwf=None)
 ```
 Here the first argument `tasks` can be a combination of
-- `ahc` -- anomalous Hall conductivity (**AHC**) in units $e^2/h/Å$, 
-- `shc` -- spin Hall conductivity (**SHC**) in units $(\hbar/2e) e^2/h/Å$
+- `ahc` -- anomalous Hall conductivity (**AHC**) in units $e^2/h/Å$ (or S/cm if `is_SI = true`), 
+- `shc` -- spin Hall conductivity (**SHC**) in units $(\hbar/2e) e^2/h/Å$ (or $(\hbar/2e)$S/cm if `is_SI = true`)
 - `morb` -- orbit moment (**Morb**) in units $\mu_B$ per u.c. 
 
 with the connector `+`.
@@ -122,11 +122,11 @@ with the connector `+`.
 The output is a table with the first column of Fermi energies.
 Every three columns thereafter correspond to one type of the calculated quantity:
 - For **AHC**, $\sigma^A_{yz}$, $\sigma^A_{zx}$, $\sigma^A_{xy}$ is calculated.
-- For **SHC**, $\sigma^{Sx}_{\alpha\beta}$, $\sigma^{Sy}_{\alpha\beta}$, $\sigma^{Sz}_{\alpha\beta}$ is calculated 
+- For **SHC**, $\sigma_{\alpha\beta}^{Sx}$, $\sigma_{\alpha\beta}^{Sy}x$, $\sigma_{\alpha\beta}^{Sz}$ is calculated 
 (so that argument `xyz` is required).
-- For **Morb**, $M^{\gamma}_{L1}$ (the local part), 
-$M^{\gamma}_{L2}$ (the itinerant  part) 
-and $M^{\gamma}_{L}=M^{\gamma}_{L1}+M^{\gamma}_{L2}$ (total) is calculated.
+- For **Morb**, $M_{L1}^{\gamma}$ (the local part), 
+$M_{L2}^{\gamma}$ (the itinerant  part) 
+and $M_{L}^{\gamma}=M_{L1}^{\gamma}+M_{L2}^{\gamma}$ (total) is calculated.
 
 #### The basic usage of `berry_calc_kpath`
 

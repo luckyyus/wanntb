@@ -9,11 +9,11 @@ from . import io
 from . import kpoints as kp
 from . import utility as ut
 from ._alpha_beta import get_alpha_beta_kpar, get_alpha_beta_kpar_kpath, get_alpha_beta_efs_kpar
-from ._berry import berry_fermi, berry_kpath, intra_shc_fermi, get_OHE_kpar_kmesh, get_OHE_kpar_kmesh_fermi, axion_fermi
+from ._berry import berry_fermi, berry_kpath, intra_shc_fermi, ohc_kpar_fermi, axion_fermi
 from ._dos import get_occ_dos_kpar, get_occ_dos_proj_kpar
 from ._edelstein import edelstein_fermi
 from ._orbit import orbital_info
-from .constant import Cart, TwoPi, Hbar_
+from .constant import Cart, TwoPi, Hbar_, Conductivity_SI
 
 
 class TBSystem:
@@ -401,7 +401,7 @@ class TBSystem:
     def berry_calc_fermi(self, tasks: str,
                          kmesh: tuple[int, int, int],
                          ef_range: tuple[float, float, int],
-                         eta=1e-4, xyz=2, subwf=None):
+                         eta=1e-4, xyz=2, subwf=None, is_SI=False):
         start = datetime.now()
         print('---------- start berry_calc_fermi ----------')
         itasks, begin_idx, count = ut.get_itasks(tasks)
@@ -409,7 +409,7 @@ class TBSystem:
         print('begin_idx:', begin_idx)
         if self.ss_R is None and 10 in itasks:
             print('spin data ss_R is missing.')
-            return
+            return 1
         kpts = kp.get_kpts_mesh(kmesh)
         print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
         ef_min, ef_max, n_ef = ef_range[0], ef_range[1], ef_range[2]
@@ -419,9 +419,13 @@ class TBSystem:
                                      self.num_wann, kpts, efs, eta, xyz=xyz, ss_R=self._ss_R, subwf=subwf)
         for it in itasks:
             if it == 0: # ahc
-                out[:, begin_idx[it]: begin_idx[it]+3] /= self.volume
+                out[:, begin_idx[it]: begin_idx[it] + 3] /= self.volume # unit is e^2/h/Å
+                if is_SI:
+                    out[:, begin_idx[it]: begin_idx[it] + 3] *= Conductivity_SI # unit is S/cm
             if it == 10: # shc
-                out[:, begin_idx[it]: begin_idx[it] + 3] /= self.volume
+                out[:, begin_idx[it]: begin_idx[it] + 3] /= self.volume # unit is (\hbar/2e) e^2/h/Å
+                if is_SI:
+                    out[:, begin_idx[it]: begin_idx[it] + 3] *= Conductivity_SI # unit is (\hbar/2e) S/cm
         output = np.column_stack((efs, out))
         print('time used: %24.2f <-- berry_calc_fermi' % (datetime.now() - start).total_seconds())
         return output
@@ -442,7 +446,24 @@ class TBSystem:
         output = np.column_stack((kpts_len, out))
         print('time used: %24.2f <-- berry_calc_kpath' % (datetime.now() - start).total_seconds())
         return output
-    
+
+    def berry_calc_kplane(self, tasks: str, ef, kplane, axis, pos, eta=1e-4, xyz=2, subwf=None):
+        start = datetime.now()
+        print('---------- start berry_calc_kpath ----------')
+        itasks, begin_idx, count = ut.get_itasks(tasks)
+        print('itasks:', itasks)
+        print('begin_idx:', begin_idx)
+        if self.ss_R is None and 10 in itasks:
+            print('spin data ss_R is missing.')
+            return
+        kpts = kp.get_kpts_plane(kplane, axis, pos)
+        print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
+        out = berry_kpath(itasks, self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
+                          self.num_wann, kpts, ef, eta, xyz=xyz, ss_R=self.ss_R, subwf=subwf)
+        output = np.column_stack((kpts, out))
+        print('time used: %24.2f <-- berry_calc_kplane' % (datetime.now() - start).total_seconds())
+        return output
+
     def edelstein_calc_fermi(self, tasks: str,
                          kmesh: tuple[int, int, int],
                          ef_range: tuple[float, float, int],
@@ -514,20 +535,9 @@ class TBSystem:
         print('time used: %24.2f <-- axion_calc_fermi' % (datetime.now() - start).total_seconds())
         return output
 
-    def get_OHE_kmesh_sys(self, kmesh, ef, dir):
+    def get_ohc_fermi(self, kmesh, ef_range, eta=1e-4, xyz=2, subwf=None, is_SI=False):
         start = datetime.now()
-        print('---------- start spin_moment_kpath ----------')
-        kpts = kp.get_kpts_mesh(kmesh)
-        nkpts = kpts.shape[0]
-        print('total number of k-points: %d' % nkpts)
-        OHE = get_OHE_kpar_kmesh(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT, self.num_wann, kpts, ef, dir)
-        # list_o_k = np.column_stack((ef,spin_moment))
-        print('time used: %24.2f <-- get_morb_berry_kpath' % (datetime.now() - start).total_seconds())
-        return OHE / self.volume * 24300  # unit is S/cm
-
-    def get_OHE_kmesh_fermi_sys(self, kmesh, ef_range, dir):
-        start = datetime.now()
-        print('---------- start OHE_kmesh_fermi_sys ----------')
+        print('---------- start get_ohc_fermi ----------')
         kpts = kp.get_kpts_mesh(kmesh)
         nkpts = kpts.shape[0]
         print('total number of k-points: %d' % nkpts)
@@ -535,29 +545,16 @@ class TBSystem:
         efs = np.linspace(ef_min, ef_max, n_ef + 1, endpoint=True, dtype=float)
         print('E_fermi_list: %s %s' % (efs.dtype, list(efs.shape)))
 
-        OHE = get_OHE_kpar_kmesh_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
-                                       self.num_wann, kpts, efs, dir)
-        print('time used: %24.2f <-- get_OHE_kmesh_fermi_sys' % (datetime.now() - start).total_seconds())
+        ohc = ohc_kpar_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT, self.num_wann,
+                             kpts, efs, eta, xyz, subwf=subwf)
+        print('time used: %24.2f <-- get_ohc_fermi' % (datetime.now() - start).total_seconds())
+        ohc /= self.volume # unit is (\hbar/e) e^2/h/Å
+        if is_SI:
+            ohc *= Conductivity_SI # unit is (\hbar/e) S/cm
+        list_o_k = np.column_stack((efs, ohc))
+        return list_o_k
 
-        list_o_k = np.column_stack((efs, OHE / self.volume * 24300))
-        return list_o_k  # unit is S/cm
 
-    def berry_calc_kplane(self, tasks: str, ef, kplane, axis, pos, eta=1e-4, xyz=2, subwf=None):
-        start = datetime.now()
-        print('---------- start berry_calc_kpath ----------')
-        itasks, begin_idx, count = ut.get_itasks(tasks)
-        print('itasks:', itasks)
-        print('begin_idx:', begin_idx)
-        if self.ss_R is None and 10 in itasks:
-            print('spin data ss_R is missing.')
-            return
-        kpts = kp.get_kpts_plane(kplane, axis, pos)
-        print('k-points: %s %s' % (kpts.dtype, list(kpts.shape)))
-        out = berry_kpath(itasks, self._ham_RT, self._r_RT, self._Rvec, self._R_cartT,
-                          self.num_wann, kpts, ef, eta, xyz=xyz, ss_R=self.ss_R, subwf=subwf)
-        output = np.column_stack((kpts, out))
-        print('time used: %24.2f <-- berry_calc_kplane' % (datetime.now() - start).total_seconds())
-        return output
 
 
 def get_tbsystem_by_new_ham(tb_in: TBSystem, ham_R_new, r_mat_R_new, R_vec_new, ss_R_new=None):
