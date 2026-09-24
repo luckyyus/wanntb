@@ -430,7 +430,8 @@ class TBSystem:
         print('time used: %24.2f <-- berry_calc_fermi' % (datetime.now() - start).total_seconds())
         return output
 
-    def berry_calc_kpath(self, tasks: str, ef: float, kpath, nkpts_path=100, eta=1e-4, xyz=2, subwf=None):
+    def berry_calc_kpath(self, tasks: str, ef: float, kpath, nkpts_path=100,
+                         eta=1e-4, xyz=2, subwf=None):
         start = datetime.now()
         print('---------- start berry_calc_kpath ----------')
         itasks, begin_idx, count = ut.get_itasks(tasks)
@@ -467,9 +468,7 @@ class TBSystem:
     def edelstein_calc_fermi(self, tasks: str,
                          kmesh: tuple[int, int, int],
                          ef_range: tuple[float, float, int],
-                         eta=1e-3,
-                         eta_intra=1e-3,
-                         subwf=None):
+                         eta=1e-3, eta_intra=1e-3, subwf=None):
         start = datetime.now()
         print('---------- start edelstein_calc_fermi ----------')
         s_or_l = True if 's' in tasks else False
@@ -493,7 +492,7 @@ class TBSystem:
         return output
 
     def berry_calc_intra_shc_fermi(self, kmesh: tuple[int, int, int], ef_range: tuple[float, float, int],
-                                   eta=1e-3, xyz=2, subwf=None):
+                                   eta=1e-3, xyz=2, subwf=None, is_SI=False):
         start = datetime.now()
         print('---------- start berry_calc_intra_shc_fermi----------')
 
@@ -508,12 +507,12 @@ class TBSystem:
         out = intra_shc_fermi(self._ham_RT, self._r_RT, self._Rvec, self._R_cartT, self._ss_R,
                                          self.num_wann, kpts, efs, eta, xyz, subwf=subwf)
 
-        shc_out = out / self.volume
-
+        shc_out = out / self.volume # unit is (\hbar/2e) e^2/h/Å
+        if is_SI:
+            shc_out *= Conductivity_SI # unit is (\hbar/2e) S/cm
         output = np.column_stack((efs, shc_out))
         print('time used: %24.2f <-- berry_calc_intra_shc_fermi' % (datetime.now() - start).total_seconds())
         return output
-
 
     def axion_calc_fermi(self, kmesh: tuple[int, int, int], ef_range: tuple[float, float, int],
                          eta=1e-4, mode=0, subwf=None):
@@ -553,8 +552,6 @@ class TBSystem:
             ohc *= Conductivity_SI # unit is (\hbar/e) S/cm
         list_o_k = np.column_stack((efs, ohc))
         return list_o_k
-
-
 
 
 def get_tbsystem_by_new_ham(tb_in: TBSystem, ham_R_new, r_mat_R_new, R_vec_new, ss_R_new=None):
